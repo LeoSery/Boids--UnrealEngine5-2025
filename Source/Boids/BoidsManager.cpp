@@ -36,6 +36,7 @@ void ABoidsManager::SpawnBoids()
 		if (NewBoid)
 		{
 			NewBoid->Direction = FMath::VRand();
+			NewBoid->BoidsManager = this;
 			Boids.Add(NewBoid);
 		}
 	}
