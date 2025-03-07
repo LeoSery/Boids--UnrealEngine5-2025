@@ -167,6 +167,23 @@ void ABoid::Tick(float DeltaTime)
 
 	FVector CurrentLocation = GetActorLocation();
 	FVector NewLocation = CurrentLocation + Direction * Velocity * DeltaTime;
+
+	if (BoidsManager)
+	{
+		NewLocation = BoidsManager->ConstrainPositionToBox(NewLocation);
+		
+		FVector BoxOrigin = BoidsManager->SpawnVolume->GetComponentLocation();
+		FVector BoxExtent = BoidsManager->SpawnVolume->GetScaledBoxExtent();
+		FVector LocalPos = NewLocation - BoxOrigin;
+		
+		if (FMath::Abs(FMath::Abs(LocalPos.X) - BoxExtent.X) < 5.0f)
+			Direction.X *= -1.0f;
+		if (FMath::Abs(FMath::Abs(LocalPos.Y) - BoxExtent.Y) < 5.0f)
+			Direction.Y *= -1.0f;
+		if (FMath::Abs(FMath::Abs(LocalPos.Z) - BoxExtent.Z) < 5.0f)
+			Direction.Z *= -1.0f;
+	}
+	
 	SetActorLocation(NewLocation);
 
 	FRotator NewRotation = Direction.Rotation();

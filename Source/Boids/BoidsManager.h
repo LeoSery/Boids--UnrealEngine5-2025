@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Components/BoxComponent.h"
 #include "BoidsManager.generated.h"
 
 class ABoid;
@@ -19,8 +20,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Boids|Spawning")
 	int32 NumberOfBoids;
 	
-	UPROPERTY(EditAnywhere, Category = "Boids|Spawning")
-	float SpawnRadius;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Boids|Spawning")
+	UBoxComponent* SpawnVolume;
 	
 	UPROPERTY(EditAnywhere, Category = "Boids|Spawning")
 	TSubclassOf<ABoid> BoidPrefab;
@@ -28,6 +29,8 @@ public:
 	void SpawnBoids();
 	
 	TArray<ABoid*> GetNearbyBoids(ABoid* Boid, float Radius) const;
+
+	FVector ConstrainPositionToBox(const FVector& Position);
 	
 protected:
 	virtual void BeginPlay() override;
