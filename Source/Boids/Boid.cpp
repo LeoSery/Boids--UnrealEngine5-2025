@@ -133,40 +133,59 @@ void ABoid::Tick(float DeltaTime)
 		FVector SeparationForce = ComputeSeparation(NearbyBoids);
 		FVector CohesionForce = ComputeCohesion(NearbyBoids);
 
-		FVector NewDirection = Direction;
+		// FVector NewDirection = Direction;
+		//
+		// if (!AlignmentForce.IsNearlyZero())
+		// {
+		// 	NewDirection += AlignmentForce * AlignmentWeight;
+		// 	NewDirection.Normalize();
+		// }
+		//
+		// if (!SeparationForce.IsNearlyZero())
+		// {
+		// 	NewDirection += SeparationForce * SeparationWeight;
+		// 	NewDirection.Normalize();
+		// }
+		//
+		// if (!CohesionForce.IsNearlyZero())
+		// {
+		// 	NewDirection += CohesionForce * CohesionWeight;
+		// 	NewDirection.Normalize();
+		// }
+		//
+		// if (!NewDirection.IsNearlyZero())
+		// {
+		// 	Direction = NewDirection;
+		// 	// Direction = FMath::VInterpNormalRotationTo(
+		// 	// 	Direction,             // Direction actuelle
+		// 	// 	NewDirection,          // Direction cible
+		// 	// 	DeltaTime * 5.0f,      // Facteur d'interpolation (ajuster selon besoin)
+		// 	// 	0.0f                   // Tolérance
+		// 	// );
+		// }
+
+		FVector WeightedForces = AlignmentForce  * AlignmentWeight
+					   + SeparationForce * SeparationWeight
+					   + CohesionForce   * CohesionWeight;
+
+		if (!WeightedForces.IsNearlyZero())
+		{
+			WeightedForces.Normalize();
+		}
+
 		
-		if (!AlignmentForce.IsNearlyZero())
-		{
-			NewDirection += AlignmentForce * AlignmentWeight;
-			NewDirection.Normalize();
-		}
+		Direction = FMath::VInterpNormalRotationTo(
+			Direction,           // direction actuelle
+			WeightedForces,      // direction cible
+			DeltaTime,
+			90.0f                 // "TurnSpeed" ajustable
+		);
 
-		if (!SeparationForce.IsNearlyZero())
-		{
-			NewDirection += SeparationForce * SeparationWeight;
-			NewDirection.Normalize();
-		}
-
-		if (!CohesionForce.IsNearlyZero())
-		{
-			NewDirection += CohesionForce * CohesionWeight;
-			NewDirection.Normalize();
-		}
-
-		if (!NewDirection.IsNearlyZero())
-		{
-			//Direction = NewDirection;
-			Direction = FMath::VInterpNormalRotationTo(
-				Direction,             // Direction actuelle
-				NewDirection,          // Direction cible
-				DeltaTime * 5.0f,      // Facteur d'interpolation (ajuster selon besoin)
-				0.0f                   // Tolérance
-			);
-		}
+		//Direction = WeightedForces;
 	}
 
 	FVector CurrentLocation = GetActorLocation();
-	FVector NewLocation = CurrentLocation + Direction * Velocity * DeltaTime;
+	FVector NewLocation = CurrentLocation + (Direction * Velocity * DeltaTime);
 
 	if (BoidsManager)
 	{
