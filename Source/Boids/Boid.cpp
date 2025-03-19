@@ -25,6 +25,8 @@ void ABoid::BeginPlay()
 	Super::BeginPlay();
 
 	FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
+
+	GenerateRaycastRotators();
 }
 
 FVector ABoid::ComputeSeparation(const TArray<ABoid*>& NearbyBoids)
@@ -132,13 +134,6 @@ FVector ABoid::ComputeObstacleAvoidance()
     FVector MyLocation = GetActorLocation();
     int32 HitCount = 0;
 	
-    TArray<FVector> Directions;
-    Directions.Add(Direction.GetSafeNormal());
-    Directions.Add(FRotator(0, 30, 0).RotateVector(Direction).GetSafeNormal());  // +30° yaw
-    Directions.Add(FRotator(0, -30, 0).RotateVector(Direction).GetSafeNormal()); // -30° yaw
-    Directions.Add(FRotator(30, 0, 0).RotateVector(Direction).GetSafeNormal());  // +30° pitch
-    Directions.Add(FRotator(-30, 0, 0).RotateVector(Direction).GetSafeNormal()); // -30° pitch
-	
     FCollisionQueryParams QueryParams;
     QueryParams.AddIgnoredActor(this);
 	
@@ -153,39 +148,44 @@ FVector ABoid::ComputeObstacleAvoidance()
         }
     }
     
-    for (FVector Dir : Directions)
-    {
-        FHitResult HitResult;
-    	
-        bool bHit = GetWorld()->LineTraceSingleByChannel(
-            HitResult,
-            MyLocation,
-            MyLocation + Dir * ObstacleDetectionDistance,
-            ECC_WorldStatic,
-            QueryParams
-        );
+	for (const FRotator& Rotator : RaycastRotators)
+	{
+		FVector WorldDir = Rotator.RotateVector(Direction.GetSafeNormal());
         
-        if (bHit)
-        {
-            float Distance = HitResult.Distance;
-            float StrengthFactor = 1.0f - (Distance / ObstacleDetectionDistance);
-        	
-            FVector AwayFromObstacle = -Dir * StrengthFactor * 2.0f;
-            AvoidanceForce += AwayFromObstacle;
-            HitCount++;
-        }
-    }
+		FHitResult HitResult;
+        
+		bool bHit = GetWorld()->LineTraceSingleByChannel(
+			HitResult,
+			MyLocation,
+			MyLocation + WorldDir * ObstacleDetectionDistance,
+			ECC_WorldStatic,
+			QueryParams
+		);
+		
+		// DrawDebugLine(GetWorld(), MyLocation, MyLocation + WorldDir * ObstacleDetectionDistance, 
+		//               bHit ? FColor::Red : FColor::Green, false, -1.0f, 0, 1.0f);
+        
+		if (bHit)
+		{
+			float Distance = HitResult.Distance;
+			float StrengthFactor = 1.0f - (Distance / ObstacleDetectionDistance);
+            
+			FVector AwayFromObstacle = -WorldDir * StrengthFactor * 2.0f;
+			AvoidanceForce += AwayFromObstacle;
+			HitCount++;
+		}
+	}
     
-    if (HitCount > 0)
-    {
-        AvoidanceForce = AvoidanceForce / HitCount;
-        if (!AvoidanceForce.IsNearlyZero())
-        {
-            AvoidanceForce.Normalize();
-        }
-    }
+	if (HitCount > 0)
+	{
+		AvoidanceForce = AvoidanceForce / HitCount;
+		if (!AvoidanceForce.IsNearlyZero())
+		{
+			AvoidanceForce.Normalize();
+		}
+	}
     
-    return AvoidanceForce;
+	return AvoidanceForce;
 }
 
 FVector ABoid::ComputeBoundaryForce()
@@ -234,6 +234,45 @@ FVector ABoid::ComputeBoundaryForce()
     }
     
     return BoundaryForce;
+}
+
+void ABoid::GenerateRaycastRotators()
+{
+	RaycastRotators.Empty();
+	
+	RaycastRotators.Add(FRotator::ZeroRotator);
+	
+	float YawAngle = 30.0f;    // Angle horizontal
+	float PitchAngle = 30.0f;  // Angle vertical
+	
+	RaycastRotators.Add(FRotator(0, YawAngle, 0));       // Droite
+	RaycastRotators.Add(FRotator(0, -YawAngle, 0));      // Gauche
+	RaycastRotators.Add(FRotator(PitchAngle, 0, 0));     // Haut
+	RaycastRotators.Add(FRotator(-PitchAngle, 0, 0));    // Bas
+	
+	if (NumberOfRaycasts > 5)
+	{
+		RaycastRotators.Add(FRotator(PitchAngle, YawAngle, 0));     // Haut-Droite
+		RaycastRotators.Add(FRotator(PitchAngle, -YawAngle, 0));    // Haut-Gauche
+		RaycastRotators.Add(FRotator(-PitchAngle, YawAngle, 0));    // Bas-Droite
+		RaycastRotators.Add(FRotator(-PitchAngle, -YawAngle, 0));   // Bas-Gauche
+	}
+	
+	if (NumberOfRaycasts > 9)
+	{
+		float HalfYaw = YawAngle * 0.5f;
+		float HalfPitch = PitchAngle * 0.5f;
+        
+		RaycastRotators.Add(FRotator(0, HalfYaw, 0));              // Demi-droite
+		RaycastRotators.Add(FRotator(0, -HalfYaw, 0));             // Demi-gauche
+		RaycastRotators.Add(FRotator(HalfPitch, 0, 0));            // Demi-haut
+		RaycastRotators.Add(FRotator(-HalfPitch, 0, 0));           // Demi-bas
+	}
+	
+	while (RaycastRotators.Num() > NumberOfRaycasts)
+	{
+		RaycastRotators.RemoveAt(RaycastRotators.Num() - 1);
+	}
 }
 
 void ABoid::Tick(float DeltaTime)

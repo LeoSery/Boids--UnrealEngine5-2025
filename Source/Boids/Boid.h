@@ -55,6 +55,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Boids|Behavior")
 	float BoundraryWeight = 1.0f;
 
+	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
+	int32 NumberOfRaycasts = 8;
+
 	FORCEINLINE float GetFOVDotProductThreshold() const { return FOVDotProductThreshold; }
 	
 	UPROPERTY()
@@ -70,6 +73,11 @@ protected:
 	FVector ComputeBoundaryForce();
 
 	float FOVDotProductThreshold = 0.5f;
+
+	UPROPERTY()
+	TArray<FRotator> RaycastRotators;
+
+	void GenerateRaycastRotators();
 
 	UPROPERTY()
 	USceneComponent* Root;
