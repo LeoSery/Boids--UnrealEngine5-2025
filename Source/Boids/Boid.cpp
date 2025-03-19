@@ -23,6 +23,8 @@ ABoid::ABoid()
 void ABoid::BeginPlay()
 {
 	Super::BeginPlay();
+
+	FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
 }
 
 FVector ABoid::ComputeSeparation(const TArray<ABoid*>& NearbyBoids)
@@ -133,55 +135,25 @@ void ABoid::Tick(float DeltaTime)
 		FVector SeparationForce = ComputeSeparation(NearbyBoids);
 		FVector CohesionForce = ComputeCohesion(NearbyBoids);
 
-		// FVector NewDirection = Direction;
-		//
-		// if (!AlignmentForce.IsNearlyZero())
-		// {
-		// 	NewDirection += AlignmentForce * AlignmentWeight;
-		// 	NewDirection.Normalize();
-		// }
-		//
-		// if (!SeparationForce.IsNearlyZero())
-		// {
-		// 	NewDirection += SeparationForce * SeparationWeight;
-		// 	NewDirection.Normalize();
-		// }
-		//
-		// if (!CohesionForce.IsNearlyZero())
-		// {
-		// 	NewDirection += CohesionForce * CohesionWeight;
-		// 	NewDirection.Normalize();
-		// }
-		//
-		// if (!NewDirection.IsNearlyZero())
-		// {
-		// 	Direction = NewDirection;
-		// 	// Direction = FMath::VInterpNormalRotationTo(
-		// 	// 	Direction,             // Direction actuelle
-		// 	// 	NewDirection,          // Direction cible
-		// 	// 	DeltaTime * 5.0f,      // Facteur d'interpolation (ajuster selon besoin)
-		// 	// 	0.0f                   // Tolérance
-		// 	// );
-		// }
-
-		FVector WeightedForces = AlignmentForce  * AlignmentWeight
+		FVector TargetDirection = AlignmentForce  * AlignmentWeight
 					   + SeparationForce * SeparationWeight
 					   + CohesionForce   * CohesionWeight;
 
-		if (!WeightedForces.IsNearlyZero())
+		if (TargetDirection.IsNearlyZero())
 		{
-			WeightedForces.Normalize();
+			TargetDirection = Direction.GetSafeNormal();
 		}
-
+		else
+		{
+			TargetDirection.Normalize();
+		}
 		
 		Direction = FMath::VInterpNormalRotationTo(
 			Direction,           // direction actuelle
-			WeightedForces,      // direction cible
+			TargetDirection,      // direction cible
 			DeltaTime,
 			90.0f                 // "TurnSpeed" ajustable
 		);
-
-		//Direction = WeightedForces;
 	}
 
 	FVector CurrentLocation = GetActorLocation();

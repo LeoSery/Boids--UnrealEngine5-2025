@@ -81,6 +81,7 @@ TArray<ABoid*> ABoidsManager::GetNearbyBoids(ABoid* Boid, float Radius) const
 	}
     
 	FVector BoidLocation = Boid->GetActorLocation();
+	FVector BoidDirection = Boid->Direction;
 	float RadiusSquared = Radius * Radius;
 	
 	for (ABoid* OtherBoid : Boids)
@@ -89,12 +90,19 @@ TArray<ABoid*> ABoidsManager::GetNearbyBoids(ABoid* Boid, float Radius) const
 		{
 			continue;
 		}
-		
+
+		FVector OtherLocation = OtherBoid->GetActorLocation();
 		float DistanceSquared = FVector::DistSquared(BoidLocation, OtherBoid->GetActorLocation());
 		
 		if (DistanceSquared <= RadiusSquared)
 		{
-			NearbyBoids.Add(OtherBoid);
+			FVector DirectionToOther = (OtherLocation - BoidLocation).GetSafeNormal();
+			float DotProduct = FVector::DotProduct(BoidDirection, DirectionToOther);
+			
+			if (DotProduct >= Boid->GetFOVDotProductThreshold())
+			{
+				NearbyBoids.Add(OtherBoid);
+			}
 		}
 	}
     

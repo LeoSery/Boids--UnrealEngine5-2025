@@ -39,7 +39,12 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Boids|Behavior")
 	float SeparationRadius = 100.0f;
+	
+	UPROPERTY(EditAnywhere, Category = "Boids|Perception")
+	float FieldOfViewAngle = 120.0f;
 
+	FORCEINLINE float GetFOVDotProductThreshold() const { return FOVDotProductThreshold; }
+	
 	UPROPERTY()
 	ABoidsManager* BoidsManager;
 	
@@ -49,6 +54,8 @@ protected:
 	FVector ComputeSeparation(const TArray<ABoid*>& NearbyBoids);
 	FVector ComputeAlignment(const TArray<ABoid*>& NearbyBoids);
 	FVector ComputeCohesion(const TArray<ABoid*>& NearbyBoids);
+
+	float FOVDotProductThreshold = 0.5f;
 
 	UPROPERTY()
 	USceneComponent* Root;
