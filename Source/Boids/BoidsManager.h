@@ -32,6 +32,8 @@ public:
 
 	FVector ConstrainPositionToBox(const FVector& Position);
 	
+	FORCEINLINE TArray<ABoid*> GetAllBoids() const { return Boids; }
+	
 protected:
 	virtual void BeginPlay() override;
 

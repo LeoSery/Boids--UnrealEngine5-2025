@@ -13,7 +13,7 @@ ABoidsManager::ABoidsManager()
 	SpawnVolume->SetBoxExtent(FVector(500.0f, 500.0f, 500.0f));
 	SpawnVolume->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	SpawnVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
-	
+    
 	if (SpawnVolume)
 	{
 		SpawnVolume->SetHiddenInGame(false);
@@ -31,7 +31,6 @@ void ABoidsManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 }
-
 
 void ABoidsManager::SpawnBoids()
 {
@@ -114,8 +113,7 @@ FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position)
 	FVector BoxOrigin = SpawnVolume->GetComponentLocation();
 	FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
 	FVector LocalPos = Position - BoxOrigin;
-    
-	// Contraindre les positions
+	
 	FVector ConstrainedPos = LocalPos;
     
 	if (LocalPos.X < -BoxExtent.X) 

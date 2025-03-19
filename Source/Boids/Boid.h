@@ -43,6 +43,18 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Boids|Perception")
 	float FieldOfViewAngle = 120.0f;
 
+	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
+	bool bEnableObstacleAvoidance = true;
+
+	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
+	float ObstacleDetectionDistance = 300.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
+	float ObstacleAvoidanceWeight = 2.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Boids|Behavior")
+	float BoundraryWeight = 1.0f;
+
 	FORCEINLINE float GetFOVDotProductThreshold() const { return FOVDotProductThreshold; }
 	
 	UPROPERTY()
@@ -54,6 +66,8 @@ protected:
 	FVector ComputeSeparation(const TArray<ABoid*>& NearbyBoids);
 	FVector ComputeAlignment(const TArray<ABoid*>& NearbyBoids);
 	FVector ComputeCohesion(const TArray<ABoid*>& NearbyBoids);
+	FVector ComputeObstacleAvoidance();
+	FVector ComputeBoundaryForce();
 
 	float FOVDotProductThreshold = 0.5f;
 

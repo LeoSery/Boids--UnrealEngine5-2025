@@ -48,8 +48,6 @@ FVector ABoid::ComputeSeparation(const TArray<ABoid*>& NearbyBoids)
 		{
 			FVector AwayFromOther = MyLocation - OtherLocation;
 			AwayFromOther.Normalize();
-			
-			//AwayFromOther = AwayFromOther * (SeparationRadius / Distance);
 
 			float StrengthFactor = FMath::Square(SeparationRadius / FMath::Max(Distance, 1.0f));
 			AwayFromOther = AwayFromOther * StrengthFactor;
@@ -123,6 +121,121 @@ FVector ABoid::ComputeCohesion(const TArray<ABoid*>& NearbyBoids)
 	return DirectionToCenter;
 }
 
+FVector ABoid::ComputeObstacleAvoidance()
+{
+	if (!bEnableObstacleAvoidance)
+    {
+        return FVector::ZeroVector;
+    }
+
+    FVector AvoidanceForce = FVector::ZeroVector;
+    FVector MyLocation = GetActorLocation();
+    int32 HitCount = 0;
+	
+    TArray<FVector> Directions;
+    Directions.Add(Direction.GetSafeNormal());
+    Directions.Add(FRotator(0, 30, 0).RotateVector(Direction).GetSafeNormal());  // +30° yaw
+    Directions.Add(FRotator(0, -30, 0).RotateVector(Direction).GetSafeNormal()); // -30° yaw
+    Directions.Add(FRotator(30, 0, 0).RotateVector(Direction).GetSafeNormal());  // +30° pitch
+    Directions.Add(FRotator(-30, 0, 0).RotateVector(Direction).GetSafeNormal()); // -30° pitch
+	
+    FCollisionQueryParams QueryParams;
+    QueryParams.AddIgnoredActor(this);
+	
+    if (BoidsManager)
+    {
+        for (ABoid* OtherBoid : BoidsManager->GetAllBoids())
+        {
+            if (OtherBoid != this)
+            {
+                QueryParams.AddIgnoredActor(OtherBoid);
+            }
+        }
+    }
+    
+    for (FVector Dir : Directions)
+    {
+        FHitResult HitResult;
+    	
+        bool bHit = GetWorld()->LineTraceSingleByChannel(
+            HitResult,
+            MyLocation,
+            MyLocation + Dir * ObstacleDetectionDistance,
+            ECC_WorldStatic,
+            QueryParams
+        );
+        
+        if (bHit)
+        {
+            float Distance = HitResult.Distance;
+            float StrengthFactor = 1.0f - (Distance / ObstacleDetectionDistance);
+        	
+            FVector AwayFromObstacle = -Dir * StrengthFactor * 2.0f;
+            AvoidanceForce += AwayFromObstacle;
+            HitCount++;
+        }
+    }
+    
+    if (HitCount > 0)
+    {
+        AvoidanceForce = AvoidanceForce / HitCount;
+        if (!AvoidanceForce.IsNearlyZero())
+        {
+            AvoidanceForce.Normalize();
+        }
+    }
+    
+    return AvoidanceForce;
+}
+
+FVector ABoid::ComputeBoundaryForce()
+{
+	if (!BoidsManager)
+        return FVector::ZeroVector;
+        
+    FVector BoundaryForce = FVector::ZeroVector;
+    FVector MyLocation = GetActorLocation();
+	
+    FVector BoxOrigin = BoidsManager->SpawnVolume->GetComponentLocation();
+    FVector BoxExtent = BoidsManager->SpawnVolume->GetScaledBoxExtent();
+	
+    FVector LocalPos = MyLocation - BoxOrigin;
+	
+    const float BoundaryMargin = 50.0f;
+    const float ForceStrength = 1.0f;
+	
+    if (LocalPos.X > BoxExtent.X - BoundaryMargin)
+        BoundaryForce.X = -ForceStrength * (1.0f - ((BoxExtent.X - LocalPos.X) / BoundaryMargin));
+    else if (LocalPos.X < -BoxExtent.X + BoundaryMargin)
+        BoundaryForce.X = ForceStrength * (1.0f - ((-BoxExtent.X - LocalPos.X) / -BoundaryMargin));
+        
+    if (LocalPos.Y > BoxExtent.Y - BoundaryMargin)
+        BoundaryForce.Y = -ForceStrength * (1.0f - ((BoxExtent.Y - LocalPos.Y) / BoundaryMargin));
+    else if (LocalPos.Y < -BoxExtent.Y + BoundaryMargin)
+        BoundaryForce.Y = ForceStrength * (1.0f - ((-BoxExtent.Y - LocalPos.Y) / -BoundaryMargin));
+        
+    if (LocalPos.Z > BoxExtent.Z - BoundaryMargin)
+        BoundaryForce.Z = -ForceStrength * (1.0f - ((BoxExtent.Z - LocalPos.Z) / BoundaryMargin));
+    else if (LocalPos.Z < -BoxExtent.Z + BoundaryMargin)
+        BoundaryForce.Z = ForceStrength * (1.0f - ((-BoxExtent.Z - LocalPos.Z) / -BoundaryMargin));
+	
+    if (!BoundaryForce.IsNearlyZero())
+    {
+        DrawDebugLine(
+            GetWorld(),
+            MyLocation,
+            MyLocation + BoundaryForce * 100.0f,
+            FColor::Yellow,
+            false,
+            -1.0f,
+            0,
+            2.0f
+        );
+    }
+    
+    return BoundaryForce;
+}
+
 void ABoid::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -134,10 +247,14 @@ void ABoid::Tick(float DeltaTime)
 		FVector AlignmentForce = ComputeAlignment(NearbyBoids);
 		FVector SeparationForce = ComputeSeparation(NearbyBoids);
 		FVector CohesionForce = ComputeCohesion(NearbyBoids);
+		FVector ObstacleAvoidanceForce = ComputeObstacleAvoidance();
+		FVector BoundaryForce = ComputeBoundaryForce();
 
 		FVector TargetDirection = AlignmentForce  * AlignmentWeight
 					   + SeparationForce * SeparationWeight
-					   + CohesionForce   * CohesionWeight;
+					   + CohesionForce   * CohesionWeight
+					   + ObstacleAvoidanceForce * ObstacleAvoidanceWeight
+					   + BoundaryForce *  BoundraryWeight;
 
 		if (TargetDirection.IsNearlyZero())
 		{
@@ -149,10 +266,10 @@ void ABoid::Tick(float DeltaTime)
 		}
 		
 		Direction = FMath::VInterpNormalRotationTo(
-			Direction,           // direction actuelle
-			TargetDirection,      // direction cible
+			Direction,
+			TargetDirection,
 			DeltaTime,
-			90.0f                 // "TurnSpeed" ajustable
+			90.0f 
 		);
 	}
 
@@ -162,17 +279,6 @@ void ABoid::Tick(float DeltaTime)
 	if (BoidsManager)
 	{
 		NewLocation = BoidsManager->ConstrainPositionToBox(NewLocation);
-		
-		FVector BoxOrigin = BoidsManager->SpawnVolume->GetComponentLocation();
-		FVector BoxExtent = BoidsManager->SpawnVolume->GetScaledBoxExtent();
-		FVector LocalPos = NewLocation - BoxOrigin;
-		
-		if (FMath::Abs(FMath::Abs(LocalPos.X) - BoxExtent.X) < 5.0f)
-			Direction.X *= -1.0f;
-		if (FMath::Abs(FMath::Abs(LocalPos.Y) - BoxExtent.Y) < 5.0f)
-			Direction.Y *= -1.0f;
-		if (FMath::Abs(FMath::Abs(LocalPos.Z) - BoxExtent.Z) < 5.0f)
-			Direction.Z *= -1.0f;
 	}
 	
 	SetActorLocation(NewLocation);
@@ -220,4 +326,18 @@ void ABoid::Tick(float DeltaTime)
 		0,
 		2.0f
 	);
+
+	FHitResult TestHit;
+	bool bHits = GetWorld()->LineTraceSingleByChannel(
+		TestHit,
+		GetActorLocation(),
+		GetActorLocation() + FVector(0, 0, 5000),
+		ECC_Visibility,
+		FCollisionQueryParams()
+	);
+
+	if (bHits)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Hit something: %s"), *TestHit.GetActor()->GetName());
+	}
 }
