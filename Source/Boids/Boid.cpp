@@ -16,7 +16,6 @@ ABoid::ABoid()
 	Mesh->SetEnableGravity(false);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	
-	Velocity = 1.0f;
 	Direction = FVector(1.0f, 0.0f, 0.0f);
 }
 
@@ -27,100 +26,6 @@ void ABoid::BeginPlay()
 	FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
 
 	GenerateRaycastRotators();
-}
-
-FVector ABoid::ComputeSeparation(const TArray<ABoid*>& NearbyBoids)
-{
-	FVector SeparationForce = FVector::ZeroVector;
-    
-	if (NearbyBoids.Num() == 0)
-	{
-		return SeparationForce;
-	}
-    
-	FVector MyLocation = GetActorLocation();
-	int32 BoidsCount = 0;
-    
-	for (ABoid* OtherBoid : NearbyBoids)
-	{
-		FVector OtherLocation = OtherBoid->GetActorLocation();
-		float Distance = FVector::Dist(MyLocation, OtherLocation);
-		
-		if (Distance < SeparationRadius && Distance > 0)
-		{
-			FVector AwayFromOther = MyLocation - OtherLocation;
-			AwayFromOther.Normalize();
-
-			float StrengthFactor = FMath::Square(SeparationRadius / FMath::Max(Distance, 1.0f));
-			AwayFromOther = AwayFromOther * StrengthFactor;
-            
-			SeparationForce += AwayFromOther;
-			BoidsCount++;
-		}
-	}
-	
-	if (BoidsCount > 0)
-	{
-		SeparationForce = SeparationForce / BoidsCount;
-        
-		if (!SeparationForce.IsNearlyZero())
-		{
-			SeparationForce.Normalize();
-		}
-	}
-    
-	return SeparationForce;
-}
-
-FVector ABoid::ComputeAlignment(const TArray<ABoid*>& NearbyBoids)
-{
-	if (NearbyBoids.Num() == 0)
-	{
-		return FVector::ZeroVector;
-	}
-	
-	FVector AverageDirection = FVector::ZeroVector;
-    
-	for (ABoid* OtherBoid : NearbyBoids)
-	{
-		AverageDirection += OtherBoid->Direction;
-	}
-
-	AverageDirection = AverageDirection / NearbyBoids.Num();
-	
-	if (!AverageDirection.IsNearlyZero())
-	{
-		AverageDirection.Normalize();
-	}
-	
-	return AverageDirection;
-}
-
-FVector ABoid::ComputeCohesion(const TArray<ABoid*>& NearbyBoids)
-{
-	if (NearbyBoids.Num() == 0)
-	{
-		return FVector::ZeroVector;
-	}
-	
-	FVector CenterOfMass = FVector::ZeroVector;
-    
-	for (ABoid* OtherBoid : NearbyBoids)
-	{
-		CenterOfMass += OtherBoid->GetActorLocation();
-	}
-	
-	CenterOfMass = CenterOfMass / NearbyBoids.Num();
-	
-	FVector MyLocation = GetActorLocation();
-	FVector DirectionToCenter = CenterOfMass - MyLocation;
-	
-	if (!DirectionToCenter.IsNearlyZero())
-	{
-		DirectionToCenter.Normalize();
-	}
-    
-	return DirectionToCenter;
 }
 
 FVector ABoid::ComputeObstacleAvoidance()
@@ -188,54 +93,6 @@ FVector ABoid::ComputeObstacleAvoidance()
 	return AvoidanceForce;
 }
 
-FVector ABoid::ComputeBoundaryForce()
-{
-	if (!BoidsManager)
-        return FVector::ZeroVector;
-        
-    FVector BoundaryForce = FVector::ZeroVector;
-    FVector MyLocation = GetActorLocation();
-	
-    FVector BoxOrigin = BoidsManager->SpawnVolume->GetComponentLocation();
-    FVector BoxExtent = BoidsManager->SpawnVolume->GetScaledBoxExtent();
-	
-    FVector LocalPos = MyLocation - BoxOrigin;
-	
-    const float BoundaryMargin = 50.0f;
-    const float ForceStrength = 1.0f;
-	
-    if (LocalPos.X > BoxExtent.X - BoundaryMargin)
-        BoundaryForce.X = -ForceStrength * (1.0f - ((BoxExtent.X - LocalPos.X) / BoundaryMargin));
-    else if (LocalPos.X < -BoxExtent.X + BoundaryMargin)
-        BoundaryForce.X = ForceStrength * (1.0f - ((-BoxExtent.X - LocalPos.X) / -BoundaryMargin));
-        
-    if (LocalPos.Y > BoxExtent.Y - BoundaryMargin)
-        BoundaryForce.Y = -ForceStrength * (1.0f - ((BoxExtent.Y - LocalPos.Y) / BoundaryMargin));
-    else if (LocalPos.Y < -BoxExtent.Y + BoundaryMargin)
-        BoundaryForce.Y = ForceStrength * (1.0f - ((-BoxExtent.Y - LocalPos.Y) / -BoundaryMargin));
-        
-    if (LocalPos.Z > BoxExtent.Z - BoundaryMargin)
-        BoundaryForce.Z = -ForceStrength * (1.0f - ((BoxExtent.Z - LocalPos.Z) / BoundaryMargin));
-    else if (LocalPos.Z < -BoxExtent.Z + BoundaryMargin)
-        BoundaryForce.Z = ForceStrength * (1.0f - ((-BoxExtent.Z - LocalPos.Z) / -BoundaryMargin));
-	
-    if (!BoundaryForce.IsNearlyZero())
-    {
-        DrawDebugLine(
-            GetWorld(),
-            MyLocation,
-            MyLocation + BoundaryForce * 100.0f,
-            FColor::Yellow,
-            false,
-            -1.0f,
-            0,
-            2.0f
-        );
-    }
-    
-    return BoundaryForce;
-}
-
 void ABoid::GenerateRaycastRotators()
 {
 	RaycastRotators.Empty();
@@ -281,50 +138,23 @@ void ABoid::Tick(float DeltaTime)
 
 	if (BoidsManager)
 	{
-		TArray<ABoid*> NearbyBoids = BoidsManager->GetNearbyBoids(this, PerceptionRadius);
-		
-		FVector AlignmentForce = ComputeAlignment(NearbyBoids);
-		FVector SeparationForce = ComputeSeparation(NearbyBoids);
-		FVector CohesionForce = ComputeCohesion(NearbyBoids);
 		FVector ObstacleAvoidanceForce = ComputeObstacleAvoidance();
-		FVector BoundaryForce = ComputeBoundaryForce();
 
-		FVector TargetDirection = AlignmentForce  * AlignmentWeight
-					   + SeparationForce * SeparationWeight
-					   + CohesionForce   * CohesionWeight
-					   + ObstacleAvoidanceForce * ObstacleAvoidanceWeight
-					   + BoundaryForce *  BoundraryWeight;
-
-		if (TargetDirection.IsNearlyZero())
+		if (!ObstacleAvoidanceForce.IsNearlyZero())
 		{
-			TargetDirection = Direction.GetSafeNormal();
+			ObstacleAvoidanceForce *= ObstacleAvoidanceWeight;
+			ObstacleAvoidanceForce.Normalize();
+			
+			Direction = FMath::VInterpNormalRotationTo(
+				Direction,
+				ObstacleAvoidanceForce,
+				DeltaTime,
+				90.0f 
+			);
 		}
-		else
-		{
-			TargetDirection.Normalize();
-		}
-		
-		Direction = FMath::VInterpNormalRotationTo(
-			Direction,
-			TargetDirection,
-			DeltaTime,
-			90.0f 
-		);
 	}
-
+	
 	FVector CurrentLocation = GetActorLocation();
-	FVector NewLocation = CurrentLocation + (Direction * Velocity * DeltaTime);
-
-	if (BoidsManager)
-	{
-		NewLocation = BoidsManager->ConstrainPositionToBox(NewLocation);
-	}
-	
-	SetActorLocation(NewLocation);
-
-	FRotator NewRotation = Direction.Rotation();
-	SetActorRotation(NewRotation);
-	
 	FVector ForwardVector = GetActorForwardVector();
 	FVector UpVector = GetActorUpVector();
 	
