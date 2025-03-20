@@ -1,16 +1,8 @@
-﻿#include "BoidsManager.h"
-#include "BoidSystem.h"
+﻿#include "BoidSystem.h"
+#include "BoidsManager.h"
 #include "Boid.h"
 
-UBoidSystem::UBoidSystem()
-    : OwnerManager(nullptr)
-      , SeparationWeight(10.0f)
-      , AlignmentWeight(0.5f)
-      , CohesionWeight(0.5f)
-      , SeparationRadius(120.0f)
-      , PerceptionRadius(5000.0f)
-      , BoundaryWeight(0)
-      , Velocity(0)
+UBoidSystem::UBoidSystem() : OwnerManager(nullptr)
 {
     
 }
@@ -31,7 +23,7 @@ void UBoidSystem::Initialize(int32 NumBoids, const TArray<FVector>& InitialPosit
 }
 
 void UBoidSystem::SetBehaviorParameters(float InSeparationWeight, float InAlignmentWeight, float InCohesionWeight, float InSeparationRadius, float InPerceptionRadius,
-    float InBoundaryWeight, float InVelocity)
+    float InBoundaryWeight, float InVelocity, float InFieldOfViewAngle)
 {
     SeparationWeight = InSeparationWeight;
     AlignmentWeight = InAlignmentWeight;
@@ -40,6 +32,9 @@ void UBoidSystem::SetBehaviorParameters(float InSeparationWeight, float InAlignm
     PerceptionRadius = InPerceptionRadius;
     BoundaryWeight = InBoundaryWeight;
     Velocity = InVelocity;
+    FieldOfViewAngle = InFieldOfViewAngle;
+
+    FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
 }
 
 void UBoidSystem::Update(float DeltaTime)
@@ -49,14 +44,27 @@ void UBoidSystem::Update(float DeltaTime)
     TArray<FVector> SeparationForces;
     TArray<FVector> AlignmentForces;
     TArray<FVector> CohesionForces;
+    TArray<FVector> BoundaryForces;
+    TArray<FVector> ObstacleAvoidanceForces;
     
     SeparationForces.SetNum(Positions.Num());
     AlignmentForces.SetNum(Positions.Num());
     CohesionForces.SetNum(Positions.Num());
+    BoundaryForces.SetNum(Positions.Num());
+    ObstacleAvoidanceForces.SetNum(Positions.Num());
     
     CalculateSeparationForces(SeparationForces);
     CalculateAlignmentForces(AlignmentForces);
     CalculateCohesionForces(CohesionForces);
+    CalculateBoundaryForces(BoundaryForces);
+
+    for (int32 i = 0; i < Positions.Num(); ++i)
+    {
+        if (BoidActors[i])
+        {
+            ObstacleAvoidanceForces[i] = BoidActors[i]->ComputeObstacleAvoidance();
+        }
+    }
     
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
@@ -70,6 +78,12 @@ void UBoidSystem::Update(float DeltaTime)
         
         if (!CohesionForces[i].IsNearlyZero())
             TotalForce += CohesionForces[i] * CohesionWeight;
+
+        if (!BoundaryForces[i].IsNearlyZero())
+            TotalForce += BoundaryForces[i] * BoundaryWeight;
+
+        if (!ObstacleAvoidanceForces[i].IsNearlyZero() && BoidActors[i])
+            TotalForce += ObstacleAvoidanceForces[i] * BoidActors[i]->ObstacleAvoidanceWeight;
         
         if (TotalForce.IsNearlyZero())
         {
@@ -111,7 +125,7 @@ void UBoidSystem::FindAllNeighbors()
                     FVector DirectionToOther = (Positions[j] - Positions[i]).GetSafeNormal();
                     float DotProduct = FVector::DotProduct(Directions[i], DirectionToOther);
                     
-                    if (DotProduct >= BoidActors[i]->GetFOVDotProductThreshold())
+                    if (DotProduct >= FOVDotProductThreshold)
                     {
                         NeighborCache.Neighbors[i].Add(j);
                     }
@@ -228,6 +242,46 @@ void UBoidSystem::CalculateCohesionForces(TArray<FVector>& OutForces)
         }
         
         OutForces[i] = DirectionToCenter;
+    }
+}
+
+void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces)
+{
+    if (!OwnerManager)
+    {
+        return;
+    }
+
+    FVector BoxOrigin = OwnerManager->SpawnVolume->GetComponentLocation();
+    FVector BoxExtent = OwnerManager->SpawnVolume->GetScaledBoxExtent();
+    
+    const float BoundaryMargin = 50.0f;
+    const float ForceStrength = 1.0f;
+    
+    for (int32 i = 0; i < Positions.Num(); ++i)
+    {
+        FVector LocalPos = Positions[i] - BoxOrigin;
+        FVector BoundaryForce = FVector::ZeroVector;
+        
+        // Calcul X
+        if (LocalPos.X > BoxExtent.X - BoundaryMargin)
+            BoundaryForce.X = -ForceStrength * (1.0f - ((BoxExtent.X - LocalPos.X) / BoundaryMargin));
+        else if (LocalPos.X < -BoxExtent.X + BoundaryMargin)
+            BoundaryForce.X = ForceStrength * (1.0f - ((-BoxExtent.X - LocalPos.X) / -BoundaryMargin));
+            
+        // Calcul Y
+        if (LocalPos.Y > BoxExtent.Y - BoundaryMargin)
+            BoundaryForce.Y = -ForceStrength * (1.0f - ((BoxExtent.Y - LocalPos.Y) / BoundaryMargin));
+        else if (LocalPos.Y < -BoxExtent.Y + BoundaryMargin)
+            BoundaryForce.Y = ForceStrength * (1.0f - ((-BoxExtent.Y - LocalPos.Y) / -BoundaryMargin));
+            
+        // Calcul Z
+        if (LocalPos.Z > BoxExtent.Z - BoundaryMargin)
+            BoundaryForce.Z = -ForceStrength * (1.0f - ((BoxExtent.Z - LocalPos.Z) / BoundaryMargin));
+        else if (LocalPos.Z < -BoxExtent.Z + BoundaryMargin)
+            BoundaryForce.Z = ForceStrength * (1.0f - ((-BoxExtent.Z - LocalPos.Z) / -BoundaryMargin));
+        
+        OutForces[i] = BoundaryForce;
     }
 }
 

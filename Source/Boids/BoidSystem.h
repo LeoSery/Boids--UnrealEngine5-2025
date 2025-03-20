@@ -28,7 +28,7 @@ public:
     FORCEINLINE TArray<ABoid*>& GetActors() { return BoidActors; }
     
     void SetBehaviorParameters(float InSeparationWeight, float InAlignmentWeight, float InCohesionWeight, float InSeparationRadius, float InPerceptionRadius,
-        float InBoundaryWeight, float InVelocity);
+        float InBoundaryWeight, float InVelocity, float InFieldOfViewAngle);
 
     UPROPERTY()
     ABoidsManager* OwnerManager;
@@ -50,10 +50,13 @@ private:
     float PerceptionRadius;
     float BoundaryWeight;
     float Velocity;
+    float FieldOfViewAngle;
+    float FOVDotProductThreshold;
     
     void CalculateSeparationForces(TArray<FVector>& OutForces);
     void CalculateAlignmentForces(TArray<FVector>& OutForces);
     void CalculateCohesionForces(TArray<FVector>& OutForces);
+    void CalculateBoundaryForces(TArray<FVector>& OutForces);
     void UpdatePositions(float DeltaTime);
     
     FORCEINLINE bool AreNeighbors(int32 BoidA, int32 BoidB, float Radius) const;

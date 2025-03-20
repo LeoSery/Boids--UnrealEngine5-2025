@@ -32,12 +32,7 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
 	int32 NumberOfRaycasts = 8;
 
-	UPROPERTY(EditAnywhere, Category = "Boids|Perception")
-	float FieldOfViewAngle = 120.0f;
-
 	FVector Direction;
-
-	FORCEINLINE float GetFOVDotProductThreshold() const { return FOVDotProductThreshold; }
 	
 	UPROPERTY()
 	ABoidsManager* BoidsManager;
@@ -47,13 +42,12 @@ public:
 	UPROPERTY()
 	UBoidSystem* BoidSystem = nullptr;
 	
+	FVector ComputeObstacleAvoidance();
+	
 protected:
 	virtual void BeginPlay() override;
 	
-	FVector ComputeObstacleAvoidance();
 	void GenerateRaycastRotators();
-	
-	float FOVDotProductThreshold = 0.5f;
 
 	UPROPERTY()
 	TArray<FRotator> RaycastRotators;

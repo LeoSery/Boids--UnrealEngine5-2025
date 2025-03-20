@@ -32,6 +32,7 @@ public:
     FORCEINLINE float GetPerceptionRadius() const { return PerceptionRadius; }
     FORCEINLINE float GetBoidVelocity() const { return Velocity; }
     FORCEINLINE float GetBoundaryWeight() const { return BoundaryWeight; }
+    FORCEINLINE float GetFieldOfViewAngle() const { return FieldOfViewAngle; }
     FORCEINLINE TArray<ABoid*> GetAllBoids() const { return BoidSystem ? BoidSystem->GetActors() : TArray<ABoid*>(); }
     
     UFUNCTION(Category = "Boids|Spawning")
@@ -60,6 +61,9 @@ public:
 
     UFUNCTION(Category = "Boids|Behavior")
     void SetBoundaryWeight(float NewValue);
+
+    UFUNCTION(Category = "Boids|Perception")
+    void SetFieldOfViewAngle(float NewValue);
     
     UFUNCTION(Category = "Boids|Spawning")
     void RespawnBoids();
@@ -98,4 +102,7 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Boids|Behavior", meta = (ClampMin = "0.0"))
     float BoundaryWeight = 1.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Boids|Perception", meta = (ClampMin = "0.0", ClampMax = "360.0"))
+    float FieldOfViewAngle = 120.0f;
 };

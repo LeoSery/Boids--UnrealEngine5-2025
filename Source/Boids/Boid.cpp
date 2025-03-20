@@ -23,8 +23,6 @@ void ABoid::BeginPlay()
 {
 	Super::BeginPlay();
 
-	FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
-
 	GenerateRaycastRotators();
 }
 
@@ -135,24 +133,6 @@ void ABoid::GenerateRaycastRotators()
 void ABoid::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-	if (BoidsManager)
-	{
-		FVector ObstacleAvoidanceForce = ComputeObstacleAvoidance();
-
-		if (!ObstacleAvoidanceForce.IsNearlyZero())
-		{
-			ObstacleAvoidanceForce *= ObstacleAvoidanceWeight;
-			ObstacleAvoidanceForce.Normalize();
-			
-			Direction = FMath::VInterpNormalRotationTo(
-				Direction,
-				ObstacleAvoidanceForce,
-				DeltaTime,
-				90.0f 
-			);
-		}
-	}
 	
 	FVector CurrentLocation = GetActorLocation();
 	FVector ForwardVector = GetActorForwardVector();

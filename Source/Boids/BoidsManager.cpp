@@ -64,7 +64,8 @@ void ABoidsManager::SyncParametersToSystem()
 			SeparationRadius,
 			PerceptionRadius,
 			BoundaryWeight,
-			Velocity
+			Velocity,
+			FieldOfViewAngle
 		);
 	}
 }
@@ -206,5 +207,11 @@ void ABoidsManager::SetBoidVelocity(float NewValue)
 void ABoidsManager::SetBoundaryWeight(float NewValue)
 {
 	BoundaryWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetFieldOfViewAngle(float NewValue)
+{
+	FieldOfViewAngle = FMath::Clamp(NewValue, 0.0f, 360.0f);
 	SyncParametersToSystem();
 }
