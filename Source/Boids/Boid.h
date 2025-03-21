@@ -19,38 +19,16 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boids|Settings")
 	UStaticMeshComponent* Mesh;
-
-	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
-	bool bEnableObstacleAvoidance = true;
-
-	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
-	float ObstacleDetectionDistance = 300.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
-	float ObstacleAvoidanceWeight = 2.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
-	int32 NumberOfRaycasts = 8;
-
-	FVector Direction;
+	
+	int32 BoidIndex = -1;
 	
 	UPROPERTY()
-	ABoidsManager* BoidsManager;
-
-	int32 BoidIndex = -1;
-
+	ABoidsManager* BoidsManager = nullptr;
+	
 	UPROPERTY()
 	UBoidSystem* BoidSystem = nullptr;
 	
-	FVector ComputeObstacleAvoidance();
-	
 protected:
-	virtual void BeginPlay() override;
-	
-	void GenerateRaycastRotators();
-
-	UPROPERTY()
-	TArray<FRotator> RaycastRotators;
 
 	UPROPERTY()
 	USceneComponent* Root;

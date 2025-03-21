@@ -33,6 +33,10 @@ public:
     FORCEINLINE float GetBoidVelocity() const { return Velocity; }
     FORCEINLINE float GetBoundaryWeight() const { return BoundaryWeight; }
     FORCEINLINE float GetFieldOfViewAngle() const { return FieldOfViewAngle; }
+    FORCEINLINE float GetObstacleAvoidanceWeight() const { return ObstacleAvoidanceWeight; }
+    FORCEINLINE bool GetEnableObstacleAvoidance() const { return bEnableObstacleAvoidance; }
+    FORCEINLINE float GetObstacleDetectionDistance() const { return ObstacleDetectionDistance; }
+    FORCEINLINE int32 GetNumberOfRaycasts() const { return NumberOfRaycasts; }
     FORCEINLINE TArray<ABoid*> GetAllBoids() const { return BoidSystem ? BoidSystem->GetActors() : TArray<ABoid*>(); }
     
     UFUNCTION(Category = "Boids|Spawning")
@@ -64,6 +68,18 @@ public:
 
     UFUNCTION(Category = "Boids|Perception")
     void SetFieldOfViewAngle(float NewValue);
+
+    UFUNCTION(Category = "Boids|Obstacle Avoidance")
+    void SetObstacleAvoidanceWeight(float NewValue);
+
+    UFUNCTION(Category = "Boids|Obstacle Avoidance")
+    void SetEnableObstacleAvoidance(bool bNewValue);
+
+    UFUNCTION(Category = "Boids|Obstacle Avoidance")
+    void SetObstacleDetectionDistance(float NewValue);
+
+    UFUNCTION(Category = "Boids|Obstacle Avoidance")
+    void SetNumberOfRaycasts(int32 NewValue);
     
     UFUNCTION(Category = "Boids|Spawning")
     void RespawnBoids();
@@ -105,4 +121,16 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Boids|Perception", meta = (ClampMin = "0.0", ClampMax = "360.0"))
     float FieldOfViewAngle = 120.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "0.0"))
+    float ObstacleAvoidanceWeight = 2.0f;
+
+    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "1.0"))
+    float ObstacleDetectionDistance = 300.0f;
+    
+    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "1", ClampMax = "12"))
+    int32 NumberOfRaycasts = 8;
+    
+    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
+    bool bEnableObstacleAvoidance = true;
 };

@@ -67,6 +67,13 @@ void ABoidsManager::SyncParametersToSystem()
 			Velocity,
 			FieldOfViewAngle
 		);
+		
+		BoidSystem->SetObstacleAvoidanceParameters(
+			ObstacleAvoidanceWeight,
+			ObstacleDetectionDistance,
+			NumberOfRaycasts,
+			bEnableObstacleAvoidance
+		);
 	}
 }
 
@@ -123,12 +130,13 @@ void ABoidsManager::SpawnBoids()
         
 		if (NewBoid)
 		{
-			FVector RandomDirection = FMath::VRand();
-			NewBoid->Direction = RandomDirection;
 			NewBoid->BoidsManager = this;
+			NewBoid->BoidSystem = BoidSystem;
+			
+			FVector RandomDirection = FMath::VRand();
+			InitialDirections.Add(RandomDirection);
 			
 			InitialPositions.Add(SpawnLocation);
-			InitialDirections.Add(RandomDirection);
 			SpawnedBoids.Add(NewBoid);
 		}
 	}
@@ -214,4 +222,33 @@ void ABoidsManager::SetFieldOfViewAngle(float NewValue)
 {
 	FieldOfViewAngle = FMath::Clamp(NewValue, 0.0f, 360.0f);
 	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetObstacleAvoidanceWeight(float NewValue)
+{
+	ObstacleAvoidanceWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetEnableObstacleAvoidance(bool bNewValue)
+{
+	bEnableObstacleAvoidance = bNewValue;
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetObstacleDetectionDistance(float NewValue)
+{
+	ObstacleDetectionDistance = FMath::Max(1.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetNumberOfRaycasts(int32 NewValue)
+{
+	NumberOfRaycasts = FMath::Clamp(NewValue, 1, 12);
+	SyncParametersToSystem();
+
+	if (BoidSystem)
+	{
+		BoidSystem->GenerateRaycastRotators();
+	}
 }
