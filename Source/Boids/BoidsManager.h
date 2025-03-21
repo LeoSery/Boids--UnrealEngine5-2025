@@ -15,14 +15,14 @@ class BOIDS_API ABoidsManager : public AActor
 
 public:
     ABoidsManager();
-    virtual void Tick(float DeltaTime) override;
+    virtual void Tick(const float DeltaTime) override;
     virtual void OnConstruction(const FTransform& Transform) override;
     virtual void BeginPlay() override;
     
     void SpawnBoids();
-    FVector ConstrainPositionToBox(const FVector& Position);
+    FVector ConstrainPositionToBox(const FVector& Position) const;
     
-    void SyncParametersToSystem();
+    void SyncParametersToSystem() const;
     
     FORCEINLINE int32 GetNumberOfBoids() const { return NumberOfBoids; }
     FORCEINLINE float GetSeparationWeight() const { return SeparationWeight; }
@@ -37,49 +37,50 @@ public:
     FORCEINLINE bool GetEnableObstacleAvoidance() const { return bEnableObstacleAvoidance; }
     FORCEINLINE float GetObstacleDetectionDistance() const { return ObstacleDetectionDistance; }
     FORCEINLINE int32 GetNumberOfRaycasts() const { return NumberOfRaycasts; }
-    FORCEINLINE TArray<ABoid*> GetAllBoids() const { return BoidSystem ? BoidSystem->GetActors() : TArray<ABoid*>(); }
+    
+    //FORCEINLINE TArray<ABoid*> GetAllBoids() const { return BoidSystem ? BoidSystem->GetActors() : TArray<ABoid*>(); }
     
     UFUNCTION(Category = "Boids|Spawning")
-    FORCEINLINE void SetNumberOfBoids(int32 NewValue)
+    FORCEINLINE void SetNumberOfBoids(const int32 NewValue)
     {
         NumberOfBoids = FMath::Max(1, NewValue);
     }
     
     UFUNCTION(Category = "Boids|Behavior")
-    void SetSeparationWeight(float NewValue);
+    void SetSeparationWeight(const float NewValue);
     
     UFUNCTION(Category = "Boids|Behavior")
-    void SetAlignmentWeight(float NewValue);
+    void SetAlignmentWeight(const float NewValue);
     
     UFUNCTION(Category = "Boids|Behavior")
-    void SetCohesionWeight(float NewValue);
+    void SetCohesionWeight(const float NewValue);
     
     UFUNCTION(Category = "Boids|Behavior")
-    void SetSeparationRadius(float NewValue);
+    void SetSeparationRadius(const float NewValue);
     
     UFUNCTION(Category = "Boids|Behavior")
-    void SetPerceptionRadius(float NewValue);
+    void SetPerceptionRadius(const float NewValue);
 
     UFUNCTION(Category = "Boids|Movement")
-    void SetBoidVelocity(float NewValue);
+    void SetBoidVelocity(const float NewValue);
 
     UFUNCTION(Category = "Boids|Behavior")
-    void SetBoundaryWeight(float NewValue);
+    void SetBoundaryWeight(const float NewValue);
 
     UFUNCTION(Category = "Boids|Perception")
-    void SetFieldOfViewAngle(float NewValue);
+    void SetFieldOfViewAngle(const float NewValue);
 
     UFUNCTION(Category = "Boids|Obstacle Avoidance")
-    void SetObstacleAvoidanceWeight(float NewValue);
+    void SetObstacleAvoidanceWeight(const float NewValue);
 
     UFUNCTION(Category = "Boids|Obstacle Avoidance")
-    void SetEnableObstacleAvoidance(bool bNewValue);
+    void SetEnableObstacleAvoidance(const bool bNewValue);
 
     UFUNCTION(Category = "Boids|Obstacle Avoidance")
-    void SetObstacleDetectionDistance(float NewValue);
+    void SetObstacleDetectionDistance(const float NewValue);
 
     UFUNCTION(Category = "Boids|Obstacle Avoidance")
-    void SetNumberOfRaycasts(int32 NewValue);
+    void SetNumberOfRaycasts(const int32 NewValue);
     
     UFUNCTION(Category = "Boids|Spawning")
     void RespawnBoids();

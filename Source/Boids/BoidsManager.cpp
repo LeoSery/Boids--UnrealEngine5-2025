@@ -43,7 +43,7 @@ void ABoidsManager::OnConstruction(const FTransform& Transform)
 	}
 }
 
-void ABoidsManager::Tick(float DeltaTime)
+void ABoidsManager::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
@@ -53,7 +53,7 @@ void ABoidsManager::Tick(float DeltaTime)
 	}
 }
 
-void ABoidsManager::SyncParametersToSystem()
+void ABoidsManager::SyncParametersToSystem() const
 {
 	if (BoidSystem)
 	{
@@ -81,7 +81,7 @@ void ABoidsManager::RespawnBoids()
 {
 	if (BoidSystem)
 	{
-		for (ABoid* Boid : BoidSystem->GetActors())
+		for (const TArray<ABoid*>& AllActors = BoidSystem->GetActors(); ABoid* Boid : AllActors)
 		{
 			if (Boid)
 			{
@@ -89,7 +89,6 @@ void ABoidsManager::RespawnBoids()
 			}
 		}
 	}
-	
 	SpawnBoids();
 }
 
@@ -101,8 +100,8 @@ void ABoidsManager::SpawnBoids()
 		return;
 	}
 	
-	FVector BoxOrigin = SpawnVolume->GetComponentLocation();
-	FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
+	const FVector BoxOrigin = SpawnVolume->GetComponentLocation();
+	const FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
 	
 	TArray<FVector> InitialPositions;
 	TArray<FVector> InitialDirections;
@@ -114,26 +113,24 @@ void ABoidsManager::SpawnBoids()
 	
 	for (int32 i = 0; i < NumberOfBoids; i++)
 	{
-		FVector RandomOffset = FVector(
+		const FVector RandomOffset = FVector(
 			FMath::RandRange(-BoxExtent.X, BoxExtent.X),
 			FMath::RandRange(-BoxExtent.Y, BoxExtent.Y),
 			FMath::RandRange(-BoxExtent.Z, BoxExtent.Z)
 		);
         
-		FVector SpawnLocation = BoxOrigin + RandomOffset;
-		FRotator SpawnRotation = FMath::VRand().Rotation();
+		const FVector SpawnLocation = BoxOrigin + RandomOffset;
+		const FRotator SpawnRotation = FMath::VRand().Rotation();
         
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-        
-		ABoid* NewBoid = GetWorld()->SpawnActor<ABoid>(BoidPrefab, SpawnLocation, SpawnRotation, SpawnParams);
-        
-		if (NewBoid)
+
+		if (ABoid* NewBoid = GetWorld()->SpawnActor<ABoid>(BoidPrefab, SpawnLocation, SpawnRotation, SpawnParams))
 		{
 			NewBoid->BoidsManager = this;
 			NewBoid->BoidSystem = BoidSystem;
 			
-			FVector RandomDirection = FMath::VRand();
+			const FVector RandomDirection = FMath::VRand();
 			InitialDirections.Add(RandomDirection);
 			
 			InitialPositions.Add(SpawnLocation);
@@ -150,11 +147,11 @@ void ABoidsManager::SpawnBoids()
 	}
 }
 
-FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position)
+FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position) const
 {
-	FVector BoxOrigin = SpawnVolume->GetComponentLocation();
-	FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
-	FVector LocalPos = Position - BoxOrigin;
+	const FVector BoxOrigin = SpawnVolume->GetComponentLocation();
+	const FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
+	const FVector LocalPos = Position - BoxOrigin;
 	
 	FVector ConstrainedPos = LocalPos;
     
@@ -176,73 +173,73 @@ FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position)
 	return BoxOrigin + ConstrainedPos;
 }
 
-void ABoidsManager::SetSeparationWeight(float NewValue)
+void ABoidsManager::SetSeparationWeight(const float NewValue)
 {
 	SeparationWeight = FMath::Max(0.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetAlignmentWeight(float NewValue)
+void ABoidsManager::SetAlignmentWeight(const float NewValue)
 {
 	AlignmentWeight = FMath::Max(0.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetCohesionWeight(float NewValue)
+void ABoidsManager::SetCohesionWeight(const float NewValue)
 {
 	CohesionWeight = FMath::Max(0.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetSeparationRadius(float NewValue)
+void ABoidsManager::SetSeparationRadius(const float NewValue)
 {
 	SeparationRadius = FMath::Max(1.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetPerceptionRadius(float NewValue)
+void ABoidsManager::SetPerceptionRadius(const float NewValue)
 {
 	PerceptionRadius = FMath::Max(1.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetBoidVelocity(float NewValue)
+void ABoidsManager::SetBoidVelocity(const float NewValue)
 {
 	Velocity = FMath::Max(0.1f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetBoundaryWeight(float NewValue)
+void ABoidsManager::SetBoundaryWeight(const float NewValue)
 {
 	BoundaryWeight = FMath::Max(0.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetFieldOfViewAngle(float NewValue)
+void ABoidsManager::SetFieldOfViewAngle(const float NewValue)
 {
 	FieldOfViewAngle = FMath::Clamp(NewValue, 0.0f, 360.0f);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetObstacleAvoidanceWeight(float NewValue)
+void ABoidsManager::SetObstacleAvoidanceWeight(const float NewValue)
 {
 	ObstacleAvoidanceWeight = FMath::Max(0.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetEnableObstacleAvoidance(bool bNewValue)
+void ABoidsManager::SetEnableObstacleAvoidance(const bool bNewValue)
 {
 	bEnableObstacleAvoidance = bNewValue;
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetObstacleDetectionDistance(float NewValue)
+void ABoidsManager::SetObstacleDetectionDistance(const float NewValue)
 {
 	ObstacleDetectionDistance = FMath::Max(1.0f, NewValue);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetNumberOfRaycasts(int32 NewValue)
+void ABoidsManager::SetNumberOfRaycasts(const int32 NewValue)
 {
 	NumberOfRaycasts = FMath::Clamp(NewValue, 1, 12);
 	SyncParametersToSystem();

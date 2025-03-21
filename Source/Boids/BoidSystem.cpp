@@ -8,7 +8,7 @@ UBoidSystem::UBoidSystem() : OwnerManager(nullptr)
     GenerateRaycastRotators();
 }
 
-void UBoidSystem::Initialize(int32 NumBoids, const TArray<FVector>& InitialPositions, const TArray<FVector>& InitialDirections)
+void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& InitialPositions, const TArray<FVector>& InitialDirections)
 {
     Positions.SetNum(NumBoids);
     Directions.SetNum(NumBoids);
@@ -23,8 +23,8 @@ void UBoidSystem::Initialize(int32 NumBoids, const TArray<FVector>& InitialPosit
     NeighborCache.Initialize(NumBoids);
 }
 
-void UBoidSystem::SetBehaviorParameters(float InSeparationWeight, float InAlignmentWeight, float InCohesionWeight, float InSeparationRadius, float InPerceptionRadius,
-    float InBoundaryWeight, float InVelocity, float InFieldOfViewAngle)
+void UBoidSystem::SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
+    const float InBoundaryWeight, const float InVelocity, const float InFieldOfViewAngle)
 {
     SeparationWeight = InSeparationWeight;
     AlignmentWeight = InAlignmentWeight;
@@ -38,8 +38,8 @@ void UBoidSystem::SetBehaviorParameters(float InSeparationWeight, float InAlignm
     FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
 }
 
-void UBoidSystem::SetObstacleAvoidanceParameters(float InObstacleAvoidanceWeight, float InObstacleDetectionDistance,
-    int32 InNumberOfRaycasts, bool bInEnableObstacleAvoidance)
+void UBoidSystem::SetObstacleAvoidanceParameters(const float InObstacleAvoidanceWeight, const float InObstacleDetectionDistance,
+    const int32 InNumberOfRaycasts, const bool bInEnableObstacleAvoidance)
 {
     ObstacleAvoidanceWeight = InObstacleAvoidanceWeight;
     ObstacleDetectionDistance = InObstacleDetectionDistance;
@@ -53,7 +53,7 @@ void UBoidSystem::SetObstacleAvoidanceParameters(float InObstacleAvoidanceWeight
     bEnableObstacleAvoidance = bInEnableObstacleAvoidance;
 }
 
-void UBoidSystem::Update(float DeltaTime)
+void UBoidSystem::Update(const float DeltaTime)
 {
     FindAllNeighbors();
     
@@ -132,7 +132,7 @@ void UBoidSystem::FindAllNeighbors()
                 if (BoidActors[i])
                 {
                     FVector DirectionToOther = (Positions[j] - Positions[i]).GetSafeNormal();
-                    float DotProduct = FVector::DotProduct(Directions[i], DirectionToOther);
+                    const float DotProduct = FVector::DotProduct(Directions[i], DirectionToOther);
                     
                     if (DotProduct >= FOVDotProductThreshold)
                     {
@@ -148,7 +148,7 @@ void UBoidSystem::FindAllNeighbors()
     }
 }
 
-void UBoidSystem::CalculateSeparationForces(TArray<FVector>& OutForces)
+void UBoidSystem::CalculateSeparationForces(TArray<FVector>& OutForces) const
 {
     for (int32 i = 0; i < OutForces.Num(); ++i)
     {
@@ -160,16 +160,16 @@ void UBoidSystem::CalculateSeparationForces(TArray<FVector>& OutForces)
         int32 NeighborCount = 0;
         FVector Force = FVector::ZeroVector;
         
-        for (int32 NeighborIdx : NeighborCache.Neighbors[i])
+        for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
         {
-            float Distance = FVector::Dist(Positions[i], Positions[NeighborIdx]);
+            const float Distance = FVector::Dist(Positions[i], Positions[NeighborIdx]);
             
             if (Distance < SeparationRadius && Distance > 0)
             {
                 FVector AwayFromNeighbor = Positions[i] - Positions[NeighborIdx];
                 AwayFromNeighbor.Normalize();
                 
-                AwayFromNeighbor *= (SeparationRadius / FMath::Max(Distance, 1.0f));
+                AwayFromNeighbor *= SeparationRadius / FMath::Max(Distance, 1.0f);
                 
                 Force += AwayFromNeighbor;
                 NeighborCount++;
@@ -190,7 +190,7 @@ void UBoidSystem::CalculateSeparationForces(TArray<FVector>& OutForces)
     }
 }
 
-void UBoidSystem::CalculateAlignmentForces(TArray<FVector>& OutForces)
+void UBoidSystem::CalculateAlignmentForces(TArray<FVector>& OutForces) const
 {
     for (int32 i = 0; i < OutForces.Num(); ++i)
     {
@@ -206,7 +206,7 @@ void UBoidSystem::CalculateAlignmentForces(TArray<FVector>& OutForces)
         
         FVector AverageDirection = FVector::ZeroVector;
         
-        for (int32 NeighborIdx : NeighborCache.Neighbors[i])
+        for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
         {
             AverageDirection += Directions[NeighborIdx];
         }
@@ -220,7 +220,7 @@ void UBoidSystem::CalculateAlignmentForces(TArray<FVector>& OutForces)
     }
 }
 
-void UBoidSystem::CalculateCohesionForces(TArray<FVector>& OutForces)
+void UBoidSystem::CalculateCohesionForces(TArray<FVector>& OutForces) const
 {
     for (int32 i = 0; i < OutForces.Num(); ++i)
     {
@@ -236,7 +236,7 @@ void UBoidSystem::CalculateCohesionForces(TArray<FVector>& OutForces)
         
         FVector CenterOfMass = FVector::ZeroVector;
         
-        for (int32 NeighborIdx : NeighborCache.Neighbors[i])
+        for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
         {
             CenterOfMass += Positions[NeighborIdx];
         }
@@ -254,21 +254,21 @@ void UBoidSystem::CalculateCohesionForces(TArray<FVector>& OutForces)
     }
 }
 
-void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces)
+void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
 {
     if (!OwnerManager)
     {
         return;
     }
 
-    FVector BoxOrigin = OwnerManager->SpawnVolume->GetComponentLocation();
-    FVector BoxExtent = OwnerManager->SpawnVolume->GetScaledBoxExtent();
-    
-    const float BoundaryMargin = 50.0f;
-    const float ForceStrength = 1.0f;
+    const FVector BoxOrigin = OwnerManager->SpawnVolume->GetComponentLocation();
+    const FVector BoxExtent = OwnerManager->SpawnVolume->GetScaledBoxExtent();
     
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
+        constexpr float BoundaryMargin = 50.0f;
+        constexpr float ForceStrength = 1.0f;
+        
         FVector LocalPos = Positions[i] - BoxOrigin;
         FVector BoundaryForce = FVector::ZeroVector;
         
@@ -294,14 +294,14 @@ void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces)
     }
 }
 
-void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces)
+void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) const
 {
     if (!bEnableObstacleAvoidance || !OwnerManager)
     {
         return;
     }
-    
-    UWorld* World = OwnerManager->GetWorld();
+
+    const UWorld* World = OwnerManager->GetWorld();
     if (!World)
     {
         return;
@@ -319,7 +319,7 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces)
         FCollisionQueryParams QueryParams;
         
         // Ignorer tous les acteurs de boids
-        for (ABoid* Boid : BoidActors)
+        for (const ABoid* Boid : BoidActors)
         {
             if (Boid)
             {
@@ -333,7 +333,7 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces)
             
             FHitResult HitResult;
             
-            bool bHit = World->LineTraceSingleByChannel(
+            const bool bHit = World->LineTraceSingleByChannel(
                 HitResult,
                 BoidPosition,
                 BoidPosition + WorldDir * ObstacleDetectionDistance,
@@ -349,10 +349,10 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces)
             
             if (bHit)
             {
-                float Distance = HitResult.Distance;
-                float StrengthFactor = 1.0f - (Distance / ObstacleDetectionDistance);
+                const float Distance = HitResult.Distance;
+                const float StrengthFactor = 1.0f - (Distance / ObstacleDetectionDistance);
                 
-                FVector AwayFromObstacle = -WorldDir * StrengthFactor * 2.0f;
+                const FVector AwayFromObstacle = -WorldDir * StrengthFactor * 2.0f;
                 AvoidanceForce += AwayFromObstacle;
                 HitCount++;
             }
@@ -371,11 +371,11 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces)
     }
 }
 
-void UBoidSystem::UpdatePositions(float DeltaTime)
+void UBoidSystem::UpdatePositions(const float DeltaTime)
 {
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
-        FVector Movement = Directions[i] * Velocity * DeltaTime;
+        const FVector Movement = Directions[i] * Velocity * DeltaTime;
         Positions[i] += Movement;
         
         if (BoidActors[i] && BoidActors[i]->BoidsManager)
@@ -396,9 +396,9 @@ void UBoidSystem::GenerateRaycastRotators()
     RaycastRotators.Empty();
     
     RaycastRotators.Add(FRotator::ZeroRotator);
-    
-    float YawAngle = 30.0f;    // Angle horizontal
-    float PitchAngle = 30.0f;  // Angle vertical
+
+    constexpr float YawAngle = 30.0f;    // Angle horizontal
+    constexpr float PitchAngle = 30.0f;  // Angle vertical
     
     RaycastRotators.Add(FRotator(0, YawAngle, 0));       // Droite
     RaycastRotators.Add(FRotator(0, -YawAngle, 0));      // Gauche
@@ -415,8 +415,8 @@ void UBoidSystem::GenerateRaycastRotators()
     
     if (NumberOfRaycasts > 9)
     {
-        float HalfYaw = YawAngle * 0.5f;
-        float HalfPitch = PitchAngle * 0.5f;
+        constexpr float HalfYaw = YawAngle * 0.5f;
+        constexpr float HalfPitch = PitchAngle * 0.5f;
         
         RaycastRotators.Add(FRotator(0, HalfYaw, 0));              // Demi-droite
         RaycastRotators.Add(FRotator(0, -HalfYaw, 0));             // Demi-gauche
@@ -430,13 +430,13 @@ void UBoidSystem::GenerateRaycastRotators()
     }
 }
 
-FORCEINLINE bool UBoidSystem::AreNeighbors(int32 BoidA, int32 BoidB, float Radius) const
+FORCEINLINE bool UBoidSystem::AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const
 {
     if (BoidA == BoidB)
     {
         return false;
     }
     
-    float DistSquared = FVector::DistSquared(Positions[BoidA], Positions[BoidB]);
+    const float DistSquared = FVector::DistSquared(Positions[BoidA], Positions[BoidB]);
     return DistSquared <= Radius * Radius;
 }

@@ -17,7 +17,7 @@ ABoid::ABoid()
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 }
 
-void ABoid::Tick(float DeltaTime)
+void ABoid::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
@@ -26,12 +26,12 @@ void ABoid::Tick(float DeltaTime)
 		return;
 	}
 
-	FVector Direction = BoidSystem->GetDirection(BoidIndex).GetSafeNormal();
-	FVector CurrentLocation = GetActorLocation();
-	FVector ForwardVector = GetActorForwardVector();
-	FVector UpVector = GetActorUpVector();
-	
-	const float LineLength = 100.0f;
+	const FVector Direction = BoidSystem->GetDirection(BoidIndex).GetSafeNormal();
+	const FVector CurrentLocation = GetActorLocation();
+	const FVector ForwardVector = GetActorForwardVector();
+	const FVector UpVector = GetActorUpVector();
+
+	constexpr float LineLength = 100.0f;
 
 	// Direction (red)
 	DrawDebugLine(
@@ -69,17 +69,17 @@ void ABoid::Tick(float DeltaTime)
 		2.0f
 	);
 
-	// FHitResult TestHit;
-	// bool bHits = GetWorld()->LineTraceSingleByChannel(
-	// 	TestHit,
-	// 	GetActorLocation(),
-	// 	GetActorLocation() + FVector(0, 0, 5000),
-	// 	ECC_Visibility,
-	// 	FCollisionQueryParams()
-	// );
-	//
-	// if (bHits)
-	// {
-	// 	UE_LOG(LogTemp, Warning, TEXT("Hit something: %s"), *TestHit.GetActor()->GetName());
-	// }
+	FHitResult TestHit;
+	const bool bHits = GetWorld()->LineTraceSingleByChannel(
+		TestHit,
+		GetActorLocation(),
+		GetActorLocation() + FVector(0, 0, 5000),
+		ECC_Visibility,
+		FCollisionQueryParams()
+	);
+	
+	if (bHits)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Hit something: %s"), *TestHit.GetActor()->GetName());
+	}
 }

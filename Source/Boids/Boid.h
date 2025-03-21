@@ -15,7 +15,7 @@ class BOIDS_API ABoid : public AActor
 public:
 	ABoid();
 	
-	virtual void Tick(float DeltaTime) override;
+	virtual void Tick(const float DeltaTime) override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boids|Settings")
 	UStaticMeshComponent* Mesh;
