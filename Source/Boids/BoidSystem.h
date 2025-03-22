@@ -94,7 +94,9 @@ private:
     FBoidNeighborCache NeighborCache;
     int32 LastFrameMaxNeighbors = 32;
     void FindAllNeighbors();
-
+    
+    TArray<FVector> LastUpdatedPositions;
+    
     // Profiling
     struct FProfilingData
     {

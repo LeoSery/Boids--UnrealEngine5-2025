@@ -27,6 +27,8 @@ void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& Initia
     CachedCohesionForces.SetNum(NumBoids);
     CachedBoundaryForces.SetNum(NumBoids);
     CachedObstacleAvoidanceForces.SetNum(NumBoids);
+    
+    LastUpdatedPositions.SetNum(NumBoids);
 
     GlobalObstacleQueryParams = FCollisionQueryParams::DefaultQueryParam;
     GlobalObstacleQueryParams.bTraceComplex = false;
@@ -170,52 +172,31 @@ void UBoidSystem::FindAllNeighbors()
     const float PerceptionRadiusSq = PerceptionRadius * PerceptionRadius;
     const int32 NumBoids = Positions.Num();
     
-    struct FNeighborPair
+    for (int32 i = 0; i < NumBoids; ++i)
     {
-        int32 BoidIdx;
-        int32 NeighborIdx;
-    };
-    
-    TArray<FNeighborPair> AllNeighborPairs;
-    AllNeighborPairs.Reserve(NumBoids * LastFrameMaxNeighbors);
-    FCriticalSection NeighborPairsCritical;
-    
-    ParallelFor(NumBoids, [&](int32 i)
-    {
-        TArray<FNeighborPair> LocalPairs;
-        LocalPairs.Reserve(LastFrameMaxNeighbors);
-        
-        for (int32 j = 0; j < NumBoids; ++j)
+        for (int32 j = i + 1; j < NumBoids; ++j)
         {
-            if (i == j)
-            {
-                continue;
-            }
-            
             const float DistSquared = FVector::DistSquared(Positions[i], Positions[j]);
             
             if (DistSquared <= PerceptionRadiusSq)
             {
-                const FVector DirectionToJ = (Positions[j] - Positions[i]).GetSafeNormal();
-                const float DotProduct = FVector::DotProduct(Directions[i], DirectionToJ);
+                const FVector DirectionItoJ = (Positions[j] - Positions[i]).GetSafeNormal();
+                const float DotProductI = FVector::DotProduct(Directions[i], DirectionItoJ);
                 
-                if (DotProduct >= FOVDotProductThreshold)
+                const FVector DirectionJtoI = -DirectionItoJ;
+                const float DotProductJ = FVector::DotProduct(Directions[j], DirectionJtoI);
+                
+                if (DotProductI >= FOVDotProductThreshold)
                 {
-                    LocalPairs.Add({i, j});
+                    NeighborCache.Neighbors[i].Add(j);
+                }
+                
+                if (DotProductJ >= FOVDotProductThreshold)
+                {
+                    NeighborCache.Neighbors[j].Add(i);
                 }
             }
         }
-        
-        if (LocalPairs.Num() > 0)
-        {
-            FScopeLock Lock(&NeighborPairsCritical);
-            AllNeighborPairs.Append(LocalPairs);
-        }
-    });
-    
-    for (const FNeighborPair& Pair : AllNeighborPairs)
-    {
-        NeighborCache.Neighbors[Pair.BoidIdx].Add(Pair.NeighborIdx);
     }
     
     int32 MaxNeighborsThisFrame = 0;
@@ -234,21 +215,18 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
     FMemory::Memzero(OutAlignmentForces.GetData(), OutAlignmentForces.Num() * sizeof(FVector));
     FMemory::Memzero(OutCohesionForces.GetData(), OutCohesionForces.Num() * sizeof(FVector));
 
-    if (Positions.Num() <= 1)
+    if (Positions.Num() <= 1 || !OwnerManager)
     {
         return;
     }
     
-    if (!OwnerManager)
-    {
-        return;
-    }
+    const int32 NumBoids = Positions.Num();
     
-    for (int32 i = 0; i < Positions.Num(); ++i)
+    ParallelFor(NumBoids, [&](int32 i)
     {
         if (NeighborCache.Neighbors[i].Num() == 0)
         {
-            continue;
+            return;
         }
         
         int32 SeparationCount = 0;
@@ -258,7 +236,7 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
         
         for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
         {
-            // Separation force compute
+            // Separation
             const float Distance = FVector::Dist(Positions[i], Positions[NeighborIdx]);
             if (Distance < SeparationRadius && Distance > 0)
             {
@@ -269,14 +247,14 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
                 SeparationCount++;
             }
             
-            // ALignment force compute
+            // Alignment
             AverageDirection += Directions[NeighborIdx];
             
-            // Cohesion force compute
+            // Cohesion
             CenterOfMass += Positions[NeighborIdx];
         }
         
-        // Normalize and average the forces
+        // Force normalization
         if (SeparationCount > 0)
         {
             SeparationForce /= (float)SeparationCount;
@@ -287,15 +265,17 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
         }
         OutSeparationForces[i] = SeparationForce;
         
-        if (!AverageDirection.IsNearlyZero())
-        {
-            AverageDirection.Normalize();
-        }
-        OutAlignmentForces[i] = AverageDirection;
-        
-        int32 NeighborCount = NeighborCache.Neighbors[i].Num();
+        const int32 NeighborCount = NeighborCache.Neighbors[i].Num();
         if (NeighborCount > 0)
         {
+            // Alignment
+            if (!AverageDirection.IsNearlyZero())
+            {
+                AverageDirection.Normalize();
+            }
+            OutAlignmentForces[i] = AverageDirection;
+            
+            // Cohesion
             CenterOfMass /= NeighborCount;
             FVector DirectionToCenter = CenterOfMass - Positions[i];
             if (!DirectionToCenter.IsNearlyZero())
@@ -304,7 +284,7 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
             }
             OutCohesionForces[i] = DirectionToCenter;
         }
-    }
+    });
 }
 
 void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
@@ -428,13 +408,18 @@ void UBoidSystem::UpdatePositions(const float DeltaTime)
             Positions[i] = BoidActors[i]->BoidsManager->ConstrainPositionToBox(Positions[i]);
         }
     });
+
+    constexpr float MinUpdateDistanceSquared = 1.0f;
     
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
         if (BoidActors[i])
         {
-            BoidActors[i]->SetActorLocation(Positions[i]);
-            BoidActors[i]->SetActorRotation(Directions[i].Rotation());
+            if (FVector::DistSquared(LastUpdatedPositions[i], Positions[i]) > MinUpdateDistanceSquared)
+            {
+                BoidActors[i]->SetActorLocationAndRotation(Positions[i], Directions[i].Rotation());
+                LastUpdatedPositions[i] = Positions[i];
+            }
         }
     }
 }
