@@ -58,6 +58,8 @@ private:
     TArray<FVector> CachedCohesionForces;
     TArray<FVector> CachedBoundaryForces;
     TArray<FVector> CachedObstacleAvoidanceForces;
+
+    FCollisionQueryParams GlobalObstacleQueryParams;
     
     float SeparationWeight;
     float AlignmentWeight;
@@ -73,9 +75,11 @@ private:
     float ObstacleDetectionDistance;
     int32 NumberOfRaycasts;
     
-    void CalculateSeparationForces(TArray<FVector>& OutForces) const;
-    void CalculateAlignmentForces(TArray<FVector>& OutForces) const;
-    void CalculateCohesionForces(TArray<FVector>& OutForces) const;
+    // void CalculateSeparationForces(TArray<FVector>& OutForces) const;
+    // void CalculateAlignmentForces(TArray<FVector>& OutForces) const;
+    // void CalculateCohesionForces(TArray<FVector>& OutForces) const;
+    void CalculateFlockingForces(TArray<FVector>& OutSeparationForces, TArray<FVector>& OutAlignmentForces, TArray<FVector>& OutCohesionForces) const;
+    
     void CalculateBoundaryForces(TArray<FVector>& OutForces) const;
     void CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) const;
     

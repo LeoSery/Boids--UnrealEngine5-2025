@@ -27,6 +27,17 @@ void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& Initia
     CachedCohesionForces.SetNum(NumBoids);
     CachedBoundaryForces.SetNum(NumBoids);
     CachedObstacleAvoidanceForces.SetNum(NumBoids);
+
+    GlobalObstacleQueryParams = FCollisionQueryParams::DefaultQueryParam;
+    GlobalObstacleQueryParams.bTraceComplex = false;
+    
+    for (const ABoid* Boid : BoidActors)
+    {
+        if (Boid)
+        {
+            GlobalObstacleQueryParams.AddIgnoredActor(Boid);
+        }
+    }
 }
 
 void UBoidSystem::SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
@@ -74,15 +85,8 @@ void UBoidSystem::Update(const float DeltaTime)
     }
 
     // Fast memory zeroing
-    FMemory::Memzero(CachedSeparationForces.GetData(), NumBoids * sizeof(FVector));
-    FMemory::Memzero(CachedAlignmentForces.GetData(), NumBoids * sizeof(FVector));
-    FMemory::Memzero(CachedCohesionForces.GetData(), NumBoids * sizeof(FVector));
-    FMemory::Memzero(CachedBoundaryForces.GetData(), NumBoids * sizeof(FVector));
-    FMemory::Memzero(CachedObstacleAvoidanceForces.GetData(), NumBoids * sizeof(FVector));
     
-    CalculateSeparationForces(CachedSeparationForces);
-    CalculateAlignmentForces(CachedAlignmentForces);
-    CalculateCohesionForces(CachedCohesionForces);
+    CalculateFlockingForces(CachedSeparationForces, CachedAlignmentForces, CachedCohesionForces);
     CalculateBoundaryForces(CachedBoundaryForces);
     CalculateObstacleAvoidanceForces(CachedObstacleAvoidanceForces);
     
@@ -159,53 +163,21 @@ void UBoidSystem::FindAllNeighbors()
     }
 }
 
-void UBoidSystem::CalculateSeparationForces(TArray<FVector>& OutForces) const
+void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, TArray<FVector>& OutAlignmentForces, TArray<FVector>& OutCohesionForces) const
 {
-    for (int32 i = 0; i < OutForces.Num(); ++i)
+    // Fast memory zeroing
+    FMemory::Memzero(OutSeparationForces.GetData(), OutSeparationForces.Num() * sizeof(FVector));
+    FMemory::Memzero(OutAlignmentForces.GetData(), OutAlignmentForces.Num() * sizeof(FVector));
+    FMemory::Memzero(OutCohesionForces.GetData(), OutCohesionForces.Num() * sizeof(FVector));
+
+    if (Positions.Num() <= 1)
     {
-        OutForces[i] = FVector::ZeroVector;
+        return;
     }
     
-    for (int32 i = 0; i < Positions.Num(); ++i)
+    if (!OwnerManager)
     {
-        int32 NeighborCount = 0;
-        FVector Force = FVector::ZeroVector;
-        
-        for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
-        {
-            const float Distance = FVector::Dist(Positions[i], Positions[NeighborIdx]);
-            
-            if (Distance < SeparationRadius && Distance > 0)
-            {
-                FVector AwayFromNeighbor = Positions[i] - Positions[NeighborIdx];
-                AwayFromNeighbor.Normalize();
-                
-                AwayFromNeighbor *= SeparationRadius / FMath::Max(Distance, 1.0f);
-                
-                Force += AwayFromNeighbor;
-                NeighborCount++;
-            }
-        }
-        
-        if (NeighborCount > 0)
-        {
-            Force /= (float)NeighborCount;
-            
-            if (!Force.IsNearlyZero())
-            {
-                Force.Normalize();
-            }
-        }
-        
-        OutForces[i] = Force;
-    }
-}
-
-void UBoidSystem::CalculateAlignmentForces(TArray<FVector>& OutForces) const
-{
-    for (int32 i = 0; i < OutForces.Num(); ++i)
-    {
-        OutForces[i] = FVector::ZeroVector;
+        return;
     }
     
     for (int32 i = 0; i < Positions.Num(); ++i)
@@ -215,58 +187,67 @@ void UBoidSystem::CalculateAlignmentForces(TArray<FVector>& OutForces) const
             continue;
         }
         
+        int32 SeparationCount = 0;
+        FVector SeparationForce = FVector::ZeroVector;
         FVector AverageDirection = FVector::ZeroVector;
+        FVector CenterOfMass = FVector::ZeroVector;
         
         for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
         {
+            // Separation force compute
+            const float Distance = FVector::Dist(Positions[i], Positions[NeighborIdx]);
+            if (Distance < SeparationRadius && Distance > 0)
+            {
+                FVector AwayFromNeighbor = Positions[i] - Positions[NeighborIdx];
+                AwayFromNeighbor.Normalize();
+                AwayFromNeighbor *= SeparationRadius / FMath::Max(Distance, 1.0f);
+                SeparationForce += AwayFromNeighbor;
+                SeparationCount++;
+            }
+            
+            // ALignment force compute
             AverageDirection += Directions[NeighborIdx];
+            
+            // Cohesion force compute
+            CenterOfMass += Positions[NeighborIdx];
         }
+        
+        // Normalize and average the forces
+        if (SeparationCount > 0)
+        {
+            SeparationForce /= (float)SeparationCount;
+            if (!SeparationForce.IsNearlyZero())
+            {
+                SeparationForce.Normalize();
+            }
+        }
+        OutSeparationForces[i] = SeparationForce;
         
         if (!AverageDirection.IsNearlyZero())
         {
             AverageDirection.Normalize();
         }
+        OutAlignmentForces[i] = AverageDirection;
         
-        OutForces[i] = AverageDirection;
-    }
-}
-
-void UBoidSystem::CalculateCohesionForces(TArray<FVector>& OutForces) const
-{
-    for (int32 i = 0; i < OutForces.Num(); ++i)
-    {
-        OutForces[i] = FVector::ZeroVector;
-    }
-    
-    for (int32 i = 0; i < Positions.Num(); ++i)
-    {
-        if (NeighborCache.Neighbors[i].Num() == 0)
+        int32 NeighborCount = NeighborCache.Neighbors[i].Num();
+        if (NeighborCount > 0)
         {
-            continue;
+            CenterOfMass /= NeighborCount;
+            FVector DirectionToCenter = CenterOfMass - Positions[i];
+            if (!DirectionToCenter.IsNearlyZero())
+            {
+                DirectionToCenter.Normalize();
+            }
+            OutCohesionForces[i] = DirectionToCenter;
         }
-        
-        FVector CenterOfMass = FVector::ZeroVector;
-        
-        for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
-        {
-            CenterOfMass += Positions[NeighborIdx];
-        }
-        
-        CenterOfMass /= NeighborCache.Neighbors[i].Num();
-        
-        FVector DirectionToCenter = CenterOfMass - Positions[i];
-        
-        if (!DirectionToCenter.IsNearlyZero())
-        {
-            DirectionToCenter.Normalize();
-        }
-        
-        OutForces[i] = DirectionToCenter;
     }
 }
 
 void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
 {
+    // Fast memory zeroing
+    FMemory::Memzero(OutForces.GetData(), OutForces.Num() * sizeof(FVector));
+    
     if (!OwnerManager)
     {
         return;
@@ -307,6 +288,9 @@ void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
 
 void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) const
 {
+    // Fast memory zeroing
+    FMemory::Memzero(OutForces.GetData(), OutForces.Num() * sizeof(FVector));
+    
     if (!bEnableObstacleAvoidance || !OwnerManager)
     {
         return;
@@ -327,17 +311,6 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
         FVector BoidDirection = Directions[i];
         int32 HitCount = 0;
         
-        FCollisionQueryParams QueryParams;
-        
-        // Ignorer tous les acteurs de boids
-        for (const ABoid* Boid : BoidActors)
-        {
-            if (Boid)
-            {
-                QueryParams.AddIgnoredActor(Boid);
-            }
-        }
-        
         for (const FRotator& Rotator : RaycastRotators)
         {
             FVector WorldDir = Rotator.RotateVector(BoidDirection);
@@ -349,7 +322,7 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
                 BoidPosition,
                 BoidPosition + WorldDir * ObstacleDetectionDistance,
                 ECC_WorldStatic,
-                QueryParams
+                GlobalObstacleQueryParams
             );
             
             // Visualisation pour debug (optionnel)
