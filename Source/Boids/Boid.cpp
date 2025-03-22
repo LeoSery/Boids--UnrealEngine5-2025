@@ -77,9 +77,4 @@ void ABoid::Tick(const float DeltaTime)
 		ECC_Visibility,
 		FCollisionQueryParams()
 	);
-	
-	if (bHits)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Hit something: %s"), *TestHit.GetActor()->GetName());
-	}
 }

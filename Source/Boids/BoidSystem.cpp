@@ -72,7 +72,17 @@ void UBoidSystem::SetObstacleAvoidanceParameters(const float InObstacleAvoidance
 
 void UBoidSystem::Update(const float DeltaTime)
 {
+    double StartUpdateTime = 0.0;
+    if (bEnableProfiling)
+    {
+        StartUpdateTime = FPlatformTime::Seconds();
+    }
+    
+    double StartNeighborsTime = 0.0;
+    if (bEnableProfiling) StartNeighborsTime = FPlatformTime::Seconds();
     FindAllNeighbors();
+    
+    if (bEnableProfiling) ProfilingData.FindNeighborsTime = FPlatformTime::Seconds() - StartNeighborsTime;
     
     const int32 NumBoids = Positions.Num();
     if (CachedSeparationForces.Num() < NumBoids)
@@ -84,11 +94,20 @@ void UBoidSystem::Update(const float DeltaTime)
         CachedObstacleAvoidanceForces.SetNum(NumBoids);
     }
 
-    // Fast memory zeroing
-    
+    double StartFlockingTime = 0.0;
+    if (bEnableProfiling) StartFlockingTime = FPlatformTime::Seconds();
     CalculateFlockingForces(CachedSeparationForces, CachedAlignmentForces, CachedCohesionForces);
+    if (bEnableProfiling) ProfilingData.FlockingForcesTime = FPlatformTime::Seconds() - StartFlockingTime;
+
+    double StartBoundaryTime = 0.0;
+    if (bEnableProfiling) StartBoundaryTime = FPlatformTime::Seconds();
     CalculateBoundaryForces(CachedBoundaryForces);
+    if (bEnableProfiling) ProfilingData.BoundaryForcesTime = FPlatformTime::Seconds() - StartBoundaryTime;
+
+    double StartObstacleTime = 0.0;
+    if (bEnableProfiling) StartObstacleTime = FPlatformTime::Seconds();
     CalculateObstacleAvoidanceForces(CachedObstacleAvoidanceForces);
+    if (bEnableProfiling) ProfilingData.ObstacleAvoidanceTime = FPlatformTime::Seconds() - StartObstacleTime;
     
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
@@ -123,8 +142,25 @@ void UBoidSystem::Update(const float DeltaTime)
             90.0f
         );
     }
+
+    double StartPositionsTime = 0.0;
+    if (bEnableProfiling) StartPositionsTime = FPlatformTime::Seconds();
     
     UpdatePositions(DeltaTime);
+
+    if (bEnableProfiling)
+    {
+        ProfilingData.UpdatePositionsTime = FPlatformTime::Seconds() - StartPositionsTime;
+        
+        ProfilingData.UpdateTotal = FPlatformTime::Seconds() - StartUpdateTime;
+        
+        static int32 FrameCounter = 0;
+        if (++FrameCounter >= 60)
+        {
+            ProfilingData.LogResults();
+            FrameCounter = 0;
+        }
+    }
 }
 
 void UBoidSystem::FindAllNeighbors()
@@ -132,35 +168,63 @@ void UBoidSystem::FindAllNeighbors()
     NeighborCache.Clear();
     
     const float PerceptionRadiusSq = PerceptionRadius * PerceptionRadius;
+    const int32 NumBoids = Positions.Num();
     
-    for (int32 i = 0; i < Positions.Num(); ++i)
+    struct FNeighborPair
     {
-        for (int32 j = i + 1; j < Positions.Num(); ++j)
+        int32 BoidIdx;
+        int32 NeighborIdx;
+    };
+    
+    TArray<FNeighborPair> AllNeighborPairs;
+    AllNeighborPairs.Reserve(NumBoids * LastFrameMaxNeighbors);
+    FCriticalSection NeighborPairsCritical;
+    
+    ParallelFor(NumBoids, [&](int32 i)
+    {
+        TArray<FNeighborPair> LocalPairs;
+        LocalPairs.Reserve(LastFrameMaxNeighbors);
+        
+        for (int32 j = 0; j < NumBoids; ++j)
         {
+            if (i == j)
+            {
+                continue;
+            }
+            
             const float DistSquared = FVector::DistSquared(Positions[i], Positions[j]);
             
             if (DistSquared <= PerceptionRadiusSq)
             {
-                // Tester si j est dans le FOV de i
-                const FVector DirectionItoJ = (Positions[j] - Positions[i]).GetSafeNormal();
-                const float DotProductI = FVector::DotProduct(Directions[i], DirectionItoJ);
+                const FVector DirectionToJ = (Positions[j] - Positions[i]).GetSafeNormal();
+                const float DotProduct = FVector::DotProduct(Directions[i], DirectionToJ);
                 
-                if (DotProductI >= FOVDotProductThreshold)
+                if (DotProduct >= FOVDotProductThreshold)
                 {
-                    NeighborCache.Neighbors[i].Add(j);
-                }
-                
-                // Tester si i est dans le FOV de j (utilise la symétrie de distance)
-                const FVector DirectionJtoI = -DirectionItoJ;
-                const float DotProductJ = FVector::DotProduct(Directions[j], DirectionJtoI);
-                
-                if (DotProductJ >= FOVDotProductThreshold)
-                {
-                    NeighborCache.Neighbors[j].Add(i);
+                    LocalPairs.Add({i, j});
                 }
             }
         }
+        
+        if (LocalPairs.Num() > 0)
+        {
+            FScopeLock Lock(&NeighborPairsCritical);
+            AllNeighborPairs.Append(LocalPairs);
+        }
+    });
+    
+    for (const FNeighborPair& Pair : AllNeighborPairs)
+    {
+        NeighborCache.Neighbors[Pair.BoidIdx].Add(Pair.NeighborIdx);
     }
+    
+    int32 MaxNeighborsThisFrame = 0;
+    for (int32 i = 0; i < NumBoids; ++i)
+    {
+        MaxNeighborsThisFrame = FMath::Max(MaxNeighborsThisFrame, NeighborCache.Neighbors[i].Num());
+    }
+    
+    LastFrameMaxNeighbors = FMath::Max(1, MaxNeighborsThisFrame + (MaxNeighborsThisFrame / 4));
 }
 
 void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, TArray<FVector>& OutAlignmentForces, TArray<FVector>& OutCohesionForces) const
@@ -302,10 +366,8 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
         return;
     }
     
-    for (int32 i = 0; i < Positions.Num(); ++i)
+    ParallelFor(Positions.Num(), [&](int32 i)
     {
-        OutForces[i] = FVector::ZeroVector;
-        
         FVector AvoidanceForce = FVector::ZeroVector;
         FVector BoidPosition = Positions[i];
         FVector BoidDirection = Directions[i];
@@ -325,7 +387,6 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
                 GlobalObstacleQueryParams
             );
             
-            // Visualisation pour debug (optionnel)
             /*
             DrawDebugLine(World, BoidPosition, BoidPosition + WorldDir * ObstacleDetectionDistance, 
                           bHit ? FColor::Red : FColor::Green, false, -1.0f, 0, 1.0f);
@@ -352,12 +413,12 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
         }
         
         OutForces[i] = AvoidanceForce;
-    }
+    });
 }
 
 void UBoidSystem::UpdatePositions(const float DeltaTime)
 {
-    for (int32 i = 0; i < Positions.Num(); ++i)
+    ParallelFor(Positions.Num(), [&](int32 i)
     {
         const FVector Movement = Directions[i] * Velocity * DeltaTime;
         Positions[i] += Movement;
@@ -366,7 +427,10 @@ void UBoidSystem::UpdatePositions(const float DeltaTime)
         {
             Positions[i] = BoidActors[i]->BoidsManager->ConstrainPositionToBox(Positions[i]);
         }
-        
+    });
+    
+    for (int32 i = 0; i < Positions.Num(); ++i)
+    {
         if (BoidActors[i])
         {
             BoidActors[i]->SetActorLocation(Positions[i]);

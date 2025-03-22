@@ -75,9 +75,6 @@ private:
     float ObstacleDetectionDistance;
     int32 NumberOfRaycasts;
     
-    // void CalculateSeparationForces(TArray<FVector>& OutForces) const;
-    // void CalculateAlignmentForces(TArray<FVector>& OutForces) const;
-    // void CalculateCohesionForces(TArray<FVector>& OutForces) const;
     void CalculateFlockingForces(TArray<FVector>& OutSeparationForces, TArray<FVector>& OutAlignmentForces, TArray<FVector>& OutCohesionForces) const;
     
     void CalculateBoundaryForces(TArray<FVector>& OutForces) const;
@@ -95,5 +92,36 @@ private:
     };
     
     FBoidNeighborCache NeighborCache;
+    int32 LastFrameMaxNeighbors = 32;
     void FindAllNeighbors();
+
+    // Profiling
+    struct FProfilingData
+    {
+        double UpdateTotal = 0.0;
+        double FindNeighborsTime = 0.0;
+        double FlockingForcesTime = 0.0;
+        double BoundaryForcesTime = 0.0;
+        double ObstacleAvoidanceTime = 0.0;
+        double UpdatePositionsTime = 0.0;
+        
+        void LogResults()
+        {
+            UE_LOG(LogTemp, Warning, TEXT("--- PROFIL BOIDS ---"));
+            UE_LOG(LogTemp, Warning, TEXT("Update total: %.3f ms"), UpdateTotal * 1000.0);
+            UE_LOG(LogTemp, Warning, TEXT("FindNeighbors: %.3f ms (%.1f%%)"), 
+                FindNeighborsTime * 1000.0, (FindNeighborsTime / UpdateTotal) * 100.0);
+            UE_LOG(LogTemp, Warning, TEXT("FlockingForces: %.3f ms (%.1f%%)"), 
+                FlockingForcesTime * 1000.0, (FlockingForcesTime / UpdateTotal) * 100.0);
+            UE_LOG(LogTemp, Warning, TEXT("BoundaryForces: %.3f ms (%.1f%%)"), 
+                BoundaryForcesTime * 1000.0, (BoundaryForcesTime / UpdateTotal) * 100.0);
+            UE_LOG(LogTemp, Warning, TEXT("ObstacleAvoidance: %.3f ms (%.1f%%)"), 
+                ObstacleAvoidanceTime * 1000.0, (ObstacleAvoidanceTime / UpdateTotal) * 100.0);
+            UE_LOG(LogTemp, Warning, TEXT("UpdatePositions: %.3f ms (%.1f%%)"), 
+                UpdatePositionsTime * 1000.0, (UpdatePositionsTime / UpdateTotal) * 100.0);
+        }
+    };
+    
+    FProfilingData ProfilingData;
+    bool bEnableProfiling = true;
 };

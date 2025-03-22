@@ -38,8 +38,6 @@ public:
     FORCEINLINE float GetObstacleDetectionDistance() const { return ObstacleDetectionDistance; }
     FORCEINLINE int32 GetNumberOfRaycasts() const { return NumberOfRaycasts; }
     
-    //FORCEINLINE TArray<ABoid*> GetAllBoids() const { return BoidSystem ? BoidSystem->GetActors() : TArray<ABoid*>(); }
-    
     UFUNCTION(Category = "Boids|Spawning")
     FORCEINLINE void SetNumberOfBoids(const int32 NewValue)
     {
