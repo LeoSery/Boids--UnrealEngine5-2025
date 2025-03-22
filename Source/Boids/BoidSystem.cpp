@@ -21,6 +21,12 @@ void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& Initia
     }
     
     NeighborCache.Initialize(NumBoids);
+    
+    CachedSeparationForces.SetNum(NumBoids);
+    CachedAlignmentForces.SetNum(NumBoids);
+    CachedCohesionForces.SetNum(NumBoids);
+    CachedBoundaryForces.SetNum(NumBoids);
+    CachedObstacleAvoidanceForces.SetNum(NumBoids);
 }
 
 void UBoidSystem::SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
@@ -57,42 +63,47 @@ void UBoidSystem::Update(const float DeltaTime)
 {
     FindAllNeighbors();
     
-    TArray<FVector> SeparationForces;
-    TArray<FVector> AlignmentForces;
-    TArray<FVector> CohesionForces;
-    TArray<FVector> BoundaryForces;
-    TArray<FVector> ObstacleAvoidanceForces;
-     
-    SeparationForces.SetNum(Positions.Num());
-    AlignmentForces.SetNum(Positions.Num());
-    CohesionForces.SetNum(Positions.Num());
-    BoundaryForces.SetNum(Positions.Num());
-    ObstacleAvoidanceForces.SetNum(Positions.Num());
+    const int32 NumBoids = Positions.Num();
+    if (CachedSeparationForces.Num() < NumBoids)
+    {
+        CachedSeparationForces.SetNum(NumBoids);
+        CachedAlignmentForces.SetNum(NumBoids);
+        CachedCohesionForces.SetNum(NumBoids);
+        CachedBoundaryForces.SetNum(NumBoids);
+        CachedObstacleAvoidanceForces.SetNum(NumBoids);
+    }
+
+    // Fast memory zeroing
+    FMemory::Memzero(CachedSeparationForces.GetData(), NumBoids * sizeof(FVector));
+    FMemory::Memzero(CachedAlignmentForces.GetData(), NumBoids * sizeof(FVector));
+    FMemory::Memzero(CachedCohesionForces.GetData(), NumBoids * sizeof(FVector));
+    FMemory::Memzero(CachedBoundaryForces.GetData(), NumBoids * sizeof(FVector));
+    FMemory::Memzero(CachedObstacleAvoidanceForces.GetData(), NumBoids * sizeof(FVector));
     
-    CalculateSeparationForces(SeparationForces);
-    CalculateAlignmentForces(AlignmentForces);
-    CalculateCohesionForces(CohesionForces);
-    CalculateBoundaryForces(BoundaryForces);
-    CalculateObstacleAvoidanceForces(ObstacleAvoidanceForces);
+    CalculateSeparationForces(CachedSeparationForces);
+    CalculateAlignmentForces(CachedAlignmentForces);
+    CalculateCohesionForces(CachedCohesionForces);
+    CalculateBoundaryForces(CachedBoundaryForces);
+    CalculateObstacleAvoidanceForces(CachedObstacleAvoidanceForces);
     
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
         FVector TotalForce = FVector::ZeroVector;
         
-        if (!SeparationForces[i].IsNearlyZero())
-            TotalForce += SeparationForces[i] * SeparationWeight;
+        if (!CachedSeparationForces[i].IsNearlyZero())
+            TotalForce += CachedSeparationForces[i] * SeparationWeight;
         
-        if (!AlignmentForces[i].IsNearlyZero())
-            TotalForce += AlignmentForces[i] * AlignmentWeight;
+        if (!CachedAlignmentForces[i].IsNearlyZero())
+            TotalForce += CachedAlignmentForces[i] * AlignmentWeight;
         
-        if (!CohesionForces[i].IsNearlyZero())
-            TotalForce += CohesionForces[i] * CohesionWeight;
+        if (!CachedCohesionForces[i].IsNearlyZero())
+            TotalForce += CachedCohesionForces[i] * CohesionWeight;
 
-        if (!BoundaryForces[i].IsNearlyZero())
-            TotalForce += BoundaryForces[i] * BoundaryWeight;
+        if (!CachedBoundaryForces[i].IsNearlyZero())
+            TotalForce += CachedBoundaryForces[i] * BoundaryWeight;
 
-        if (!ObstacleAvoidanceForces[i].IsNearlyZero() && BoidActors[i])
-            TotalForce += ObstacleAvoidanceForces[i] * ObstacleAvoidanceWeight;
+        if (!CachedObstacleAvoidanceForces[i].IsNearlyZero() && BoidActors[i])
+            TotalForce += CachedObstacleAvoidanceForces[i] * ObstacleAvoidanceWeight;
         
         if (TotalForce.IsNearlyZero())
         {
@@ -116,32 +127,32 @@ void UBoidSystem::FindAllNeighbors()
 {
     NeighborCache.Clear();
     
+    const float PerceptionRadiusSq = PerceptionRadius * PerceptionRadius;
+    
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
-        for (int32 j = 0; j < Positions.Num(); ++j)
+        for (int32 j = i + 1; j < Positions.Num(); ++j)
         {
-            if (i == j)
-            {
-                continue;
-            }
+            const float DistSquared = FVector::DistSquared(Positions[i], Positions[j]);
             
-            float DistSquared = FVector::DistSquared(Positions[i], Positions[j]);
-            
-            if (DistSquared <= PerceptionRadius * PerceptionRadius)
+            if (DistSquared <= PerceptionRadiusSq)
             {
-                if (BoidActors[i])
-                {
-                    FVector DirectionToOther = (Positions[j] - Positions[i]).GetSafeNormal();
-                    const float DotProduct = FVector::DotProduct(Directions[i], DirectionToOther);
-                    
-                    if (DotProduct >= FOVDotProductThreshold)
-                    {
-                        NeighborCache.Neighbors[i].Add(j);
-                    }
-                }
-                else
+                // Tester si j est dans le FOV de i
+                const FVector DirectionItoJ = (Positions[j] - Positions[i]).GetSafeNormal();
+                const float DotProductI = FVector::DotProduct(Directions[i], DirectionItoJ);
+                
+                if (DotProductI >= FOVDotProductThreshold)
                 {
                     NeighborCache.Neighbors[i].Add(j);
+                }
+                
+                // Tester si i est dans le FOV de j (utilise la symétrie de distance)
+                const FVector DirectionJtoI = -DirectionItoJ;
+                const float DotProductJ = FVector::DotProduct(Directions[j], DirectionJtoI);
+                
+                if (DotProductJ >= FOVDotProductThreshold)
+                {
+                    NeighborCache.Neighbors[j].Add(i);
                 }
             }
         }

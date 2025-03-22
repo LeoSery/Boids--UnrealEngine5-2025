@@ -52,6 +52,12 @@ private:
 
     UPROPERTY()
     TArray<FRotator> RaycastRotators;
+
+    TArray<FVector> CachedSeparationForces;
+    TArray<FVector> CachedAlignmentForces;
+    TArray<FVector> CachedCohesionForces;
+    TArray<FVector> CachedBoundaryForces;
+    TArray<FVector> CachedObstacleAvoidanceForces;
     
     float SeparationWeight;
     float AlignmentWeight;
@@ -76,7 +82,7 @@ private:
     void UpdatePositions(const float DeltaTime);
     
     FORCEINLINE bool AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const;
-    
+
     struct FBoidNeighborCache
     {
         TArray<TArray<int32>> Neighbors;
