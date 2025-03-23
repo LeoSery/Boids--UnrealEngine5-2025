@@ -1,12 +1,12 @@
 ﻿#include "BoidsManager.h"
-
 #include "Boid.h"
+#include "BoidSystem.h"
 
 ABoidsManager::ABoidsManager()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	NumberOfBoids = 10;
+	NumberOfBoids = 100;
 
 	SpawnVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("SpawnVolume"));
 	SpawnVolume->SetupAttachment(RootComponent);
@@ -24,95 +24,134 @@ ABoidsManager::ABoidsManager()
 void ABoidsManager::BeginPlay()
 {
 	Super::BeginPlay();
+
+	BoidSystem = NewObject<UBoidSystem>(this);
+	BoidSystem->OwnerManager = this;
+
+	SyncParametersToSystem();
+
 	SpawnBoids();
 }
 
-void ABoidsManager::Tick(float DeltaTime)
+void ABoidsManager::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	
+	if (BoidSystem && !HasAnyFlags(RF_ClassDefaultObject)) // '!HasAnyFlags(RF_ClassDefaultObject)' avoid voodoo error when unreal call this method on the CDO
+	{
+		SyncParametersToSystem();
+	}
+}
+
+void ABoidsManager::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (BoidSystem)
+	{
+		BoidSystem->Update(DeltaTime);
+	}
+}
+
+void ABoidsManager::SyncParametersToSystem() const
+{
+	if (BoidSystem)
+	{
+		BoidSystem->SetBehaviorParameters(
+			SeparationWeight,
+			AlignmentWeight,
+			CohesionWeight,
+			SeparationRadius,
+			PerceptionRadius,
+			BoundaryWeight,
+			Velocity,
+			FieldOfViewAngle
+		);
+		
+		BoidSystem->SetObstacleAvoidanceParameters(
+			ObstacleAvoidanceWeight,
+			ObstacleDetectionDistance,
+			NumberOfRaycasts,
+			bEnableObstacleAvoidance
+		);
+	}
+}
+
+void ABoidsManager::RespawnBoids()
+{
+	if (BoidSystem)
+	{
+		for (const TArray<ABoid*>& AllActors = BoidSystem->GetActors(); ABoid* Boid : AllActors)
+		{
+			if (Boid)
+			{
+				Boid->Destroy();
+			}
+		}
+	}
+	SpawnBoids();
 }
 
 void ABoidsManager::SpawnBoids()
 {
-	Boids.Empty();
-	
 	if (!BoidPrefab)
 	{
 		UE_LOG(LogTemp, Error, TEXT("Boid non défini dans BoidManager!"));
 		return;
 	}
 	
-	FVector BoxOrigin = SpawnVolume->GetComponentLocation();
-	FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
+	const FVector BoxOrigin = SpawnVolume->GetComponentLocation();
+	const FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
+	
+	TArray<FVector> InitialPositions;
+	TArray<FVector> InitialDirections;
+	TArray<ABoid*> SpawnedBoids;
+	
+	InitialPositions.Reserve(NumberOfBoids);
+	InitialDirections.Reserve(NumberOfBoids);
+	SpawnedBoids.Reserve(NumberOfBoids);
 	
 	for (int32 i = 0; i < NumberOfBoids; i++)
 	{
-		FVector RandomOffset = FVector(
+		const FVector RandomOffset = FVector(
 			FMath::RandRange(-BoxExtent.X, BoxExtent.X),
 			FMath::RandRange(-BoxExtent.Y, BoxExtent.Y),
 			FMath::RandRange(-BoxExtent.Z, BoxExtent.Z)
 		);
         
-		FVector SpawnLocation = BoxOrigin + RandomOffset;
-		FRotator SpawnRotation = FMath::VRand().Rotation();
+		const FVector SpawnLocation = BoxOrigin + RandomOffset;
+		const FRotator SpawnRotation = FMath::VRand().Rotation();
         
 		FActorSpawnParameters SpawnParams;
 		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-        
-		ABoid* NewBoid = GetWorld()->SpawnActor<ABoid>(BoidPrefab, SpawnLocation, SpawnRotation, SpawnParams);
-        
-		if (NewBoid)
+
+		if (ABoid* NewBoid = GetWorld()->SpawnActor<ABoid>(BoidPrefab, SpawnLocation, SpawnRotation, SpawnParams))
 		{
-			NewBoid->Direction = FMath::VRand();
 			NewBoid->BoidsManager = this;
-			Boids.Add(NewBoid);
-		}
-	}
-}
-
-TArray<ABoid*> ABoidsManager::GetNearbyBoids(ABoid* Boid, float Radius) const
-{
-	TArray<ABoid*> NearbyBoids;
-    
-	if (!Boid)
-	{
-		return NearbyBoids;
-	}
-    
-	FVector BoidLocation = Boid->GetActorLocation();
-	FVector BoidDirection = Boid->Direction;
-	float RadiusSquared = Radius * Radius;
-	
-	for (ABoid* OtherBoid : Boids)
-	{
-		if (OtherBoid == Boid)
-		{
-			continue;
-		}
-
-		FVector OtherLocation = OtherBoid->GetActorLocation();
-		float DistanceSquared = FVector::DistSquared(BoidLocation, OtherBoid->GetActorLocation());
-		
-		if (DistanceSquared <= RadiusSquared)
-		{
-			FVector DirectionToOther = (OtherLocation - BoidLocation).GetSafeNormal();
-			float DotProduct = FVector::DotProduct(BoidDirection, DirectionToOther);
+			NewBoid->BoidSystem = BoidSystem;
 			
-			if (DotProduct >= Boid->GetFOVDotProductThreshold())
-			{
-				NearbyBoids.Add(OtherBoid);
-			}
+			const FVector RandomDirection = FMath::VRand();
+			InitialDirections.Add(RandomDirection);
+			
+			InitialPositions.Add(SpawnLocation);
+			SpawnedBoids.Add(NewBoid);
 		}
 	}
-    
-	return NearbyBoids;
+	
+	BoidSystem->Initialize(SpawnedBoids.Num(), InitialPositions, InitialDirections);
+
+	for (int32 i = 0; i < SpawnedBoids.Num(); i++)
+	{
+		BoidSystem->SetActor(i, SpawnedBoids[i]);
+		SpawnedBoids[i]->BoidIndex = i;
+	}
 }
 
-FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position)
+FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position) const
 {
-	FVector BoxOrigin = SpawnVolume->GetComponentLocation();
-	FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
-	FVector LocalPos = Position - BoxOrigin;
+	const FVector BoxOrigin = SpawnVolume->GetComponentLocation();
+	const FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
+	const FVector LocalPos = Position - BoxOrigin;
 	
 	FVector ConstrainedPos = LocalPos;
     
@@ -132,4 +171,81 @@ FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position)
 		ConstrainedPos.Z = BoxExtent.Z;
     
 	return BoxOrigin + ConstrainedPos;
+}
+
+void ABoidsManager::SetSeparationWeight(const float NewValue)
+{
+	SeparationWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetAlignmentWeight(const float NewValue)
+{
+	AlignmentWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetCohesionWeight(const float NewValue)
+{
+	CohesionWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetSeparationRadius(const float NewValue)
+{
+	SeparationRadius = FMath::Max(1.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetPerceptionRadius(const float NewValue)
+{
+	PerceptionRadius = FMath::Max(1.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetBoidVelocity(const float NewValue)
+{
+	Velocity = FMath::Max(0.1f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetBoundaryWeight(const float NewValue)
+{
+	BoundaryWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetFieldOfViewAngle(const float NewValue)
+{
+	FieldOfViewAngle = FMath::Clamp(NewValue, 0.0f, 360.0f);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetObstacleAvoidanceWeight(const float NewValue)
+{
+	ObstacleAvoidanceWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetEnableObstacleAvoidance(const bool bNewValue)
+{
+	bEnableObstacleAvoidance = bNewValue;
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetObstacleDetectionDistance(const float NewValue)
+{
+	ObstacleDetectionDistance = FMath::Max(1.0f, NewValue);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetNumberOfRaycasts(const int32 NewValue)
+{
+	NumberOfRaycasts = FMath::Clamp(NewValue, 1, 12);
+	SyncParametersToSystem();
+
+	if (BoidSystem)
+	{
+		BoidSystem->GenerateRaycastRotators();
+	}
 }

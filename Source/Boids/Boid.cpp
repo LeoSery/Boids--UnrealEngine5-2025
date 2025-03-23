@@ -15,326 +15,29 @@ ABoid::ABoid()
 	Mesh->SetSimulatePhysics(false);
 	Mesh->SetEnableGravity(false);
 	Mesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	
-	Velocity = 1.0f;
-	Direction = FVector(1.0f, 0.0f, 0.0f);
 }
 
-void ABoid::BeginPlay()
-{
-	Super::BeginPlay();
-
-	FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
-
-	GenerateRaycastRotators();
-}
-
-FVector ABoid::ComputeSeparation(const TArray<ABoid*>& NearbyBoids)
-{
-	FVector SeparationForce = FVector::ZeroVector;
-    
-	if (NearbyBoids.Num() == 0)
-	{
-		return SeparationForce;
-	}
-    
-	FVector MyLocation = GetActorLocation();
-	int32 BoidsCount = 0;
-    
-	for (ABoid* OtherBoid : NearbyBoids)
-	{
-		FVector OtherLocation = OtherBoid->GetActorLocation();
-		float Distance = FVector::Dist(MyLocation, OtherLocation);
-		
-		if (Distance < SeparationRadius && Distance > 0)
-		{
-			FVector AwayFromOther = MyLocation - OtherLocation;
-			AwayFromOther.Normalize();
-
-			float StrengthFactor = FMath::Square(SeparationRadius / FMath::Max(Distance, 1.0f));
-			AwayFromOther = AwayFromOther * StrengthFactor;
-            
-			SeparationForce += AwayFromOther;
-			BoidsCount++;
-		}
-	}
-	
-	if (BoidsCount > 0)
-	{
-		SeparationForce = SeparationForce / BoidsCount;
-        
-		if (!SeparationForce.IsNearlyZero())
-		{
-			SeparationForce.Normalize();
-		}
-	}
-    
-	return SeparationForce;
-}
-
-FVector ABoid::ComputeAlignment(const TArray<ABoid*>& NearbyBoids)
-{
-	if (NearbyBoids.Num() == 0)
-	{
-		return FVector::ZeroVector;
-	}
-	
-	FVector AverageDirection = FVector::ZeroVector;
-    
-	for (ABoid* OtherBoid : NearbyBoids)
-	{
-		AverageDirection += OtherBoid->Direction;
-	}
-
-	AverageDirection = AverageDirection / NearbyBoids.Num();
-	
-	if (!AverageDirection.IsNearlyZero())
-	{
-		AverageDirection.Normalize();
-	}
-	
-	return AverageDirection;
-}
-
-FVector ABoid::ComputeCohesion(const TArray<ABoid*>& NearbyBoids)
-{
-	if (NearbyBoids.Num() == 0)
-	{
-		return FVector::ZeroVector;
-	}
-	
-	FVector CenterOfMass = FVector::ZeroVector;
-    
-	for (ABoid* OtherBoid : NearbyBoids)
-	{
-		CenterOfMass += OtherBoid->GetActorLocation();
-	}
-	
-	CenterOfMass = CenterOfMass / NearbyBoids.Num();
-	
-	FVector MyLocation = GetActorLocation();
-	FVector DirectionToCenter = CenterOfMass - MyLocation;
-	
-	if (!DirectionToCenter.IsNearlyZero())
-	{
-		DirectionToCenter.Normalize();
-	}
-    
-	return DirectionToCenter;
-}
-
-FVector ABoid::ComputeObstacleAvoidance()
-{
-	if (!bEnableObstacleAvoidance)
-    {
-        return FVector::ZeroVector;
-    }
-
-    FVector AvoidanceForce = FVector::ZeroVector;
-    FVector MyLocation = GetActorLocation();
-    int32 HitCount = 0;
-	
-    FCollisionQueryParams QueryParams;
-    QueryParams.AddIgnoredActor(this);
-	
-    if (BoidsManager)
-    {
-        for (ABoid* OtherBoid : BoidsManager->GetAllBoids())
-        {
-            if (OtherBoid != this)
-            {
-                QueryParams.AddIgnoredActor(OtherBoid);
-            }
-        }
-    }
-    
-	for (const FRotator& Rotator : RaycastRotators)
-	{
-		FVector WorldDir = Rotator.RotateVector(Direction.GetSafeNormal());
-        
-		FHitResult HitResult;
-        
-		bool bHit = GetWorld()->LineTraceSingleByChannel(
-			HitResult,
-			MyLocation,
-			MyLocation + WorldDir * ObstacleDetectionDistance,
-			ECC_WorldStatic,
-			QueryParams
-		);
-		
-		// DrawDebugLine(GetWorld(), MyLocation, MyLocation + WorldDir * ObstacleDetectionDistance, 
-		//               bHit ? FColor::Red : FColor::Green, false, -1.0f, 0, 1.0f);
-        
-		if (bHit)
-		{
-			float Distance = HitResult.Distance;
-			float StrengthFactor = 1.0f - (Distance / ObstacleDetectionDistance);
-            
-			FVector AwayFromObstacle = -WorldDir * StrengthFactor * 2.0f;
-			AvoidanceForce += AwayFromObstacle;
-			HitCount++;
-		}
-	}
-    
-	if (HitCount > 0)
-	{
-		AvoidanceForce = AvoidanceForce / HitCount;
-		if (!AvoidanceForce.IsNearlyZero())
-		{
-			AvoidanceForce.Normalize();
-		}
-	}
-    
-	return AvoidanceForce;
-}
-
-FVector ABoid::ComputeBoundaryForce()
-{
-	if (!BoidsManager)
-        return FVector::ZeroVector;
-        
-    FVector BoundaryForce = FVector::ZeroVector;
-    FVector MyLocation = GetActorLocation();
-	
-    FVector BoxOrigin = BoidsManager->SpawnVolume->GetComponentLocation();
-    FVector BoxExtent = BoidsManager->SpawnVolume->GetScaledBoxExtent();
-	
-    FVector LocalPos = MyLocation - BoxOrigin;
-	
-    const float BoundaryMargin = 50.0f;
-    const float ForceStrength = 1.0f;
-	
-    if (LocalPos.X > BoxExtent.X - BoundaryMargin)
-        BoundaryForce.X = -ForceStrength * (1.0f - ((BoxExtent.X - LocalPos.X) / BoundaryMargin));
-    else if (LocalPos.X < -BoxExtent.X + BoundaryMargin)
-        BoundaryForce.X = ForceStrength * (1.0f - ((-BoxExtent.X - LocalPos.X) / -BoundaryMargin));
-        
-    if (LocalPos.Y > BoxExtent.Y - BoundaryMargin)
-        BoundaryForce.Y = -ForceStrength * (1.0f - ((BoxExtent.Y - LocalPos.Y) / BoundaryMargin));
-    else if (LocalPos.Y < -BoxExtent.Y + BoundaryMargin)
-        BoundaryForce.Y = ForceStrength * (1.0f - ((-BoxExtent.Y - LocalPos.Y) / -BoundaryMargin));
-        
-    if (LocalPos.Z > BoxExtent.Z - BoundaryMargin)
-        BoundaryForce.Z = -ForceStrength * (1.0f - ((BoxExtent.Z - LocalPos.Z) / BoundaryMargin));
-    else if (LocalPos.Z < -BoxExtent.Z + BoundaryMargin)
-        BoundaryForce.Z = ForceStrength * (1.0f - ((-BoxExtent.Z - LocalPos.Z) / -BoundaryMargin));
-	
-    if (!BoundaryForce.IsNearlyZero())
-    {
-        DrawDebugLine(
-            GetWorld(),
-            MyLocation,
-            MyLocation + BoundaryForce * 100.0f,
-            FColor::Yellow,
-            false,
-            -1.0f,
-            0,
-            2.0f
-        );
-    }
-    
-    return BoundaryForce;
-}
-
-void ABoid::GenerateRaycastRotators()
-{
-	RaycastRotators.Empty();
-	
-	RaycastRotators.Add(FRotator::ZeroRotator);
-	
-	float YawAngle = 30.0f;    // Angle horizontal
-	float PitchAngle = 30.0f;  // Angle vertical
-	
-	RaycastRotators.Add(FRotator(0, YawAngle, 0));       // Droite
-	RaycastRotators.Add(FRotator(0, -YawAngle, 0));      // Gauche
-	RaycastRotators.Add(FRotator(PitchAngle, 0, 0));     // Haut
-	RaycastRotators.Add(FRotator(-PitchAngle, 0, 0));    // Bas
-	
-	if (NumberOfRaycasts > 5)
-	{
-		RaycastRotators.Add(FRotator(PitchAngle, YawAngle, 0));     // Haut-Droite
-		RaycastRotators.Add(FRotator(PitchAngle, -YawAngle, 0));    // Haut-Gauche
-		RaycastRotators.Add(FRotator(-PitchAngle, YawAngle, 0));    // Bas-Droite
-		RaycastRotators.Add(FRotator(-PitchAngle, -YawAngle, 0));   // Bas-Gauche
-	}
-	
-	if (NumberOfRaycasts > 9)
-	{
-		float HalfYaw = YawAngle * 0.5f;
-		float HalfPitch = PitchAngle * 0.5f;
-        
-		RaycastRotators.Add(FRotator(0, HalfYaw, 0));              // Demi-droite
-		RaycastRotators.Add(FRotator(0, -HalfYaw, 0));             // Demi-gauche
-		RaycastRotators.Add(FRotator(HalfPitch, 0, 0));            // Demi-haut
-		RaycastRotators.Add(FRotator(-HalfPitch, 0, 0));           // Demi-bas
-	}
-	
-	while (RaycastRotators.Num() > NumberOfRaycasts)
-	{
-		RaycastRotators.RemoveAt(RaycastRotators.Num() - 1);
-	}
-}
-
-void ABoid::Tick(float DeltaTime)
+void ABoid::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (BoidsManager)
+	if (!BoidSystem || BoidIndex < 0)
 	{
-		TArray<ABoid*> NearbyBoids = BoidsManager->GetNearbyBoids(this, PerceptionRadius);
-		
-		FVector AlignmentForce = ComputeAlignment(NearbyBoids);
-		FVector SeparationForce = ComputeSeparation(NearbyBoids);
-		FVector CohesionForce = ComputeCohesion(NearbyBoids);
-		FVector ObstacleAvoidanceForce = ComputeObstacleAvoidance();
-		FVector BoundaryForce = ComputeBoundaryForce();
-
-		FVector TargetDirection = AlignmentForce  * AlignmentWeight
-					   + SeparationForce * SeparationWeight
-					   + CohesionForce   * CohesionWeight
-					   + ObstacleAvoidanceForce * ObstacleAvoidanceWeight
-					   + BoundaryForce *  BoundraryWeight;
-
-		if (TargetDirection.IsNearlyZero())
-		{
-			TargetDirection = Direction.GetSafeNormal();
-		}
-		else
-		{
-			TargetDirection.Normalize();
-		}
-		
-		Direction = FMath::VInterpNormalRotationTo(
-			Direction,
-			TargetDirection,
-			DeltaTime,
-			90.0f 
-		);
+		return;
 	}
 
-	FVector CurrentLocation = GetActorLocation();
-	FVector NewLocation = CurrentLocation + (Direction * Velocity * DeltaTime);
+	const FVector Direction = BoidSystem->GetDirection(BoidIndex).GetSafeNormal();
+	const FVector CurrentLocation = GetActorLocation();
+	const FVector ForwardVector = GetActorForwardVector();
+	const FVector UpVector = GetActorUpVector();
 
-	if (BoidsManager)
-	{
-		NewLocation = BoidsManager->ConstrainPositionToBox(NewLocation);
-	}
-	
-	SetActorLocation(NewLocation);
-
-	FRotator NewRotation = Direction.Rotation();
-	SetActorRotation(NewRotation);
-	
-	FVector ForwardVector = GetActorForwardVector();
-	FVector UpVector = GetActorUpVector();
-	
-	const float LineLength = 100.0f;
+	constexpr float LineLength = 100.0f;
 
 	// Direction (red)
 	DrawDebugLine(
 		GetWorld(),
 		CurrentLocation,
-		CurrentLocation + Direction.GetSafeNormal() * LineLength,
+		CurrentLocation + Direction * LineLength,
 		FColor::Red,
 		false,
 		-1.0f,
@@ -367,16 +70,11 @@ void ABoid::Tick(float DeltaTime)
 	);
 
 	FHitResult TestHit;
-	bool bHits = GetWorld()->LineTraceSingleByChannel(
+	const bool bHits = GetWorld()->LineTraceSingleByChannel(
 		TestHit,
 		GetActorLocation(),
 		GetActorLocation() + FVector(0, 0, 5000),
 		ECC_Visibility,
 		FCollisionQueryParams()
 	);
-
-	if (bHits)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Hit something: %s"), *TestHit.GetActor()->GetName());
-	}
 }
