@@ -173,57 +173,51 @@ FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position) const
 	return BoxOrigin + ConstrainedPos;
 }
 
-void ABoidsManager::SetSeparationWeight(const float NewValue)
+void ABoidsManager::SetNumberOfBoids(const int32 NewValue)
 {
-	SeparationWeight = FMath::Max(0.0f, NewValue);
-	SyncParametersToSystem();
-}
-
-void ABoidsManager::SetAlignmentWeight(const float NewValue)
-{
-	AlignmentWeight = FMath::Max(0.0f, NewValue);
-	SyncParametersToSystem();
-}
-
-void ABoidsManager::SetCohesionWeight(const float NewValue)
-{
-	CohesionWeight = FMath::Max(0.0f, NewValue);
-	SyncParametersToSystem();
-}
-
-void ABoidsManager::SetSeparationRadius(const float NewValue)
-{
-	SeparationRadius = FMath::Max(1.0f, NewValue);
-	SyncParametersToSystem();
-}
-
-void ABoidsManager::SetPerceptionRadius(const float NewValue)
-{
-	PerceptionRadius = FMath::Max(1.0f, NewValue);
+	NumberOfBoids = FMath::Clamp(NewValue, 1, 1000);
 	SyncParametersToSystem();
 }
 
 void ABoidsManager::SetBoidVelocity(const float NewValue)
 {
-	Velocity = FMath::Max(0.1f, NewValue);
+	Velocity = FMath::Clamp(NewValue, 1.0f, 2000.0f);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetBoundaryWeight(const float NewValue)
+void ABoidsManager::SetPerceptionRadius(const float NewValue)
 {
-	BoundaryWeight = FMath::Max(0.0f, NewValue);
+	PerceptionRadius = FMath::Clamp(NewValue, 1.0f, 5000.0f);
 	SyncParametersToSystem();
 }
 
 void ABoidsManager::SetFieldOfViewAngle(const float NewValue)
 {
-	FieldOfViewAngle = FMath::Clamp(NewValue, 0.0f, 360.0f);
+	FieldOfViewAngle = FMath::Clamp(NewValue, 1.0f, 360.0f);
 	SyncParametersToSystem();
 }
 
-void ABoidsManager::SetObstacleAvoidanceWeight(const float NewValue)
+void ABoidsManager::SetSeparationWeight(const float NewValue)
 {
-	ObstacleAvoidanceWeight = FMath::Max(0.0f, NewValue);
+	SeparationWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetSeparationRadius(const float NewValue)
+{
+	SeparationRadius = FMath::Clamp(NewValue, 1.0f, 250.0f);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetAlignmentWeight(const float NewValue)
+{
+	AlignmentWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
+	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetCohesionWeight(const float NewValue)
+{
+	CohesionWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
 	SyncParametersToSystem();
 }
 
@@ -233,9 +227,15 @@ void ABoidsManager::SetEnableObstacleAvoidance(const bool bNewValue)
 	SyncParametersToSystem();
 }
 
+void ABoidsManager::SetObstacleAvoidanceWeight(const float NewValue)
+{
+	ObstacleAvoidanceWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
+	SyncParametersToSystem();
+}
+
 void ABoidsManager::SetObstacleDetectionDistance(const float NewValue)
 {
-	ObstacleDetectionDistance = FMath::Max(1.0f, NewValue);
+	ObstacleDetectionDistance = FMath::Clamp(NewValue, 0.1f, 1000.0f);
 	SyncParametersToSystem();
 }
 
@@ -248,4 +248,10 @@ void ABoidsManager::SetNumberOfRaycasts(const int32 NewValue)
 	{
 		BoidSystem->GenerateRaycastRotators();
 	}
+}
+
+void ABoidsManager::SetBoundaryWeight(const float NewValue)
+{
+	BoundaryWeight = FMath::Max(0.0f, NewValue);
+	SyncParametersToSystem();
 }
