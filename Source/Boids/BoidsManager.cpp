@@ -74,6 +74,8 @@ void ABoidsManager::SyncParametersToSystem() const
 			NumberOfRaycasts,
 			bEnableObstacleAvoidance
 		);
+
+		BoidSystem->SetUseUniformDistribution(bUseUniformDistribution);
 	}
 }
 
@@ -90,6 +92,16 @@ void ABoidsManager::RespawnBoids()
 		}
 	}
 	SpawnBoids();
+}
+
+void ABoidsManager::SetUseUniformDistribution(const bool bNewValue)
+{
+	bUseUniformDistribution = bNewValue;
+    
+	if (BoidSystem)
+	{
+		BoidSystem->SetUseUniformDistribution(bUseUniformDistribution);
+	}
 }
 
 void ABoidsManager::SpawnBoids()
@@ -199,25 +211,25 @@ void ABoidsManager::SetFieldOfViewAngle(const float NewValue)
 
 void ABoidsManager::SetSeparationWeight(const float NewValue)
 {
-	SeparationWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
+	SeparationWeight = FMath::Clamp(NewValue, 0.1f, 100.0f);
 	SyncParametersToSystem();
 }
 
 void ABoidsManager::SetSeparationRadius(const float NewValue)
 {
-	SeparationRadius = FMath::Clamp(NewValue, 1.0f, 250.0f);
+	SeparationRadius = FMath::Clamp(NewValue, 1.0f, 1000.0f);
 	SyncParametersToSystem();
 }
 
 void ABoidsManager::SetAlignmentWeight(const float NewValue)
 {
-	AlignmentWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
+	AlignmentWeight = FMath::Clamp(NewValue, 0.1f, 100.0f);
 	SyncParametersToSystem();
 }
 
 void ABoidsManager::SetCohesionWeight(const float NewValue)
 {
-	CohesionWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
+	CohesionWeight = FMath::Clamp(NewValue, 0.1f, 100.0f);
 	SyncParametersToSystem();
 }
 
@@ -229,13 +241,13 @@ void ABoidsManager::SetEnableObstacleAvoidance(const bool bNewValue)
 
 void ABoidsManager::SetObstacleAvoidanceWeight(const float NewValue)
 {
-	ObstacleAvoidanceWeight = FMath::Clamp(NewValue, 0.1f, 20.0f);
+	ObstacleAvoidanceWeight = FMath::Clamp(NewValue, 0.1f, 100.0f);
 	SyncParametersToSystem();
 }
 
 void ABoidsManager::SetObstacleDetectionDistance(const float NewValue)
 {
-	ObstacleDetectionDistance = FMath::Clamp(NewValue, 0.1f, 1000.0f);
+	ObstacleDetectionDistance = FMath::Clamp(NewValue, 0.1f, 2000.0f);
 	SyncParametersToSystem();
 }
 

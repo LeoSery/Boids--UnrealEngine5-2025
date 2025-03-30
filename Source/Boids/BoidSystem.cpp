@@ -5,6 +5,7 @@
 UBoidSystem::UBoidSystem() : OwnerManager(nullptr)
 {
     NumberOfRaycasts = 8;
+    bUseUniformDistribution = false;
     GenerateRaycastRotators();
 }
 
@@ -300,31 +301,56 @@ void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
     const FVector BoxOrigin = OwnerManager->SpawnVolume->GetComponentLocation();
     const FVector BoxExtent = OwnerManager->SpawnVolume->GetScaledBoxExtent();
     
+    auto CalculateAxisForce = [](const float LocalPosition, const float AxisExtent, const float Margin, const float Strength, const float Exponent, const float EmerDist, const float EmerFactor) -> float
+    {
+        const float DistanceToPositiveWall = AxisExtent - LocalPosition;
+        const float DistanceToNegativeWall = -AxisExtent - LocalPosition;
+        float Force = 0.0f;
+        
+        if (DistanceToPositiveWall < Margin)
+        {
+            const float Factor = 1.0f - (DistanceToPositiveWall / Margin);
+            const float ClampedFactor = FMath::Clamp(Factor, 0.0f, 1.0f);
+            
+            Force = -Strength * FMath::Pow(ClampedFactor, Exponent);
+            
+            if (DistanceToPositiveWall < EmerDist)
+            {
+                float EmergencyRatio = 1.0f - (DistanceToPositiveWall / EmerDist);
+                Force *= (1.0f + EmerFactor * EmergencyRatio);
+            }
+        }
+        else if (DistanceToNegativeWall > -Margin)
+        {
+            const float Factor = 1.0f - (-DistanceToNegativeWall / Margin);
+            const float ClampedFactor = FMath::Clamp(Factor, 0.0f, 1.0f);
+            
+            Force = Strength * FMath::Pow(ClampedFactor, Exponent);
+            
+            if (-DistanceToNegativeWall < EmerDist)
+            {
+                float EmergencyRatio = 1.0f - (-DistanceToNegativeWall / EmerDist);
+                Force *= (1.0f + EmerFactor * EmergencyRatio);
+            }
+        }
+        
+        return Force;
+    };
+    
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
-        constexpr float BoundaryMargin = 50.0f;
-        constexpr float ForceStrength = 1.0f;
+        constexpr float BoundaryMargin = 150.0f;
+        constexpr float ForceStrength = 2.0f;
+        constexpr float ForceExponent = 0.9f;
+        constexpr float EmergencyDistance = 30.0f;
+        constexpr float EmergencyFactor = 3.0f;
+
+        const FVector LocalPos = Positions[i] - BoxOrigin;
+        FVector BoundaryForce;
         
-        FVector LocalPos = Positions[i] - BoxOrigin;
-        FVector BoundaryForce = FVector::ZeroVector;
-        
-        // Calcul X
-        if (LocalPos.X > BoxExtent.X - BoundaryMargin)
-            BoundaryForce.X = -ForceStrength * (1.0f - ((BoxExtent.X - LocalPos.X) / BoundaryMargin));
-        else if (LocalPos.X < -BoxExtent.X + BoundaryMargin)
-            BoundaryForce.X = ForceStrength * (1.0f - ((-BoxExtent.X - LocalPos.X) / -BoundaryMargin));
-            
-        // Calcul Y
-        if (LocalPos.Y > BoxExtent.Y - BoundaryMargin)
-            BoundaryForce.Y = -ForceStrength * (1.0f - ((BoxExtent.Y - LocalPos.Y) / BoundaryMargin));
-        else if (LocalPos.Y < -BoxExtent.Y + BoundaryMargin)
-            BoundaryForce.Y = ForceStrength * (1.0f - ((-BoxExtent.Y - LocalPos.Y) / -BoundaryMargin));
-            
-        // Calcul Z
-        if (LocalPos.Z > BoxExtent.Z - BoundaryMargin)
-            BoundaryForce.Z = -ForceStrength * (1.0f - ((BoxExtent.Z - LocalPos.Z) / BoundaryMargin));
-        else if (LocalPos.Z < -BoxExtent.Z + BoundaryMargin)
-            BoundaryForce.Z = ForceStrength * (1.0f - ((-BoxExtent.Z - LocalPos.Z) / -BoundaryMargin));
+        BoundaryForce.X = CalculateAxisForce(LocalPos.X, BoxExtent.X, BoundaryMargin, ForceStrength, ForceExponent, EmergencyDistance, EmergencyFactor);
+        BoundaryForce.Y = CalculateAxisForce(LocalPos.Y, BoxExtent.Y, BoundaryMargin, ForceStrength, ForceExponent, EmergencyDistance, EmergencyFactor);
+        BoundaryForce.Z = CalculateAxisForce(LocalPos.Z, BoxExtent.Z, BoundaryMargin, ForceStrength, ForceExponent, EmergencyDistance, EmergencyFactor);
         
         OutForces[i] = BoundaryForce;
     }
@@ -366,11 +392,6 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
                 ECC_WorldStatic,
                 GlobalObstacleQueryParams
             );
-            
-            /*
-            DrawDebugLine(World, BoidPosition, BoidPosition + WorldDir * ObstacleDetectionDistance, 
-                          bHit ? FColor::Red : FColor::Green, false, -1.0f, 0, 1.0f);
-            */
             
             if (bHit)
             {
@@ -427,34 +448,60 @@ void UBoidSystem::UpdatePositions(const float DeltaTime)
 void UBoidSystem::GenerateRaycastRotators()
 {
     RaycastRotators.Empty();
-    
-    RaycastRotators.Add(FRotator::ZeroRotator);
 
-    constexpr float YawAngle = 30.0f;    // Angle horizontal
-    constexpr float PitchAngle = 30.0f;  // Angle vertical
-    
-    RaycastRotators.Add(FRotator(0, YawAngle, 0));       // Droite
-    RaycastRotators.Add(FRotator(0, -YawAngle, 0));      // Gauche
-    RaycastRotators.Add(FRotator(PitchAngle, 0, 0));     // Haut
-    RaycastRotators.Add(FRotator(-PitchAngle, 0, 0));    // Bas
-    
-    if (NumberOfRaycasts > 5)
+    if (!bUseUniformDistribution)
     {
-        RaycastRotators.Add(FRotator(PitchAngle, YawAngle, 0));     // Haut-Droite
-        RaycastRotators.Add(FRotator(PitchAngle, -YawAngle, 0));    // Haut-Gauche
-        RaycastRotators.Add(FRotator(-PitchAngle, YawAngle, 0));    // Bas-Droite
-        RaycastRotators.Add(FRotator(-PitchAngle, -YawAngle, 0));   // Bas-Gauche
-    }
+        RaycastRotators.Add(FRotator::ZeroRotator);
+
+        constexpr float YawAngle = 30.0f;    // Angle horizontal
+        constexpr float PitchAngle = 30.0f;  // Angle vertical
     
-    if (NumberOfRaycasts > 9)
-    {
-        constexpr float HalfYaw = YawAngle * 0.5f;
-        constexpr float HalfPitch = PitchAngle * 0.5f;
+        RaycastRotators.Add(FRotator(0, YawAngle, 0));       // Droite
+        RaycastRotators.Add(FRotator(0, -YawAngle, 0));      // Gauche
+        RaycastRotators.Add(FRotator(PitchAngle, 0, 0));     // Haut
+        RaycastRotators.Add(FRotator(-PitchAngle, 0, 0));    // Bas
+    
+        if (NumberOfRaycasts > 5)
+        {
+            RaycastRotators.Add(FRotator(PitchAngle, YawAngle, 0));     // Haut-Droite
+            RaycastRotators.Add(FRotator(PitchAngle, -YawAngle, 0));    // Haut-Gauche
+            RaycastRotators.Add(FRotator(-PitchAngle, YawAngle, 0));    // Bas-Droite
+            RaycastRotators.Add(FRotator(-PitchAngle, -YawAngle, 0));   // Bas-Gauche
+        }
+    
+        if (NumberOfRaycasts > 9)
+        {
+            constexpr float HalfYaw = YawAngle * 0.5f;
+            constexpr float HalfPitch = PitchAngle * 0.5f;
         
-        RaycastRotators.Add(FRotator(0, HalfYaw, 0));              // Demi-droite
-        RaycastRotators.Add(FRotator(0, -HalfYaw, 0));             // Demi-gauche
-        RaycastRotators.Add(FRotator(HalfPitch, 0, 0));            // Demi-haut
-        RaycastRotators.Add(FRotator(-HalfPitch, 0, 0));           // Demi-bas
+            RaycastRotators.Add(FRotator(0, HalfYaw, 0));              // Demi-droite
+            RaycastRotators.Add(FRotator(0, -HalfYaw, 0));             // Demi-gauche
+            RaycastRotators.Add(FRotator(HalfPitch, 0, 0));            // Demi-haut
+            RaycastRotators.Add(FRotator(-HalfPitch, 0, 0));           // Demi-bas
+        }
+    }
+    else
+    {
+        const float GoldenRatio = (1.0f + FMath::Sqrt(5.0f)) / 2.0f;
+        
+        for (int32 i = 0; i < NumberOfRaycasts; ++i)
+        {
+            // Vertical placement
+            const float t = (float)i / NumberOfRaycasts;
+            const float Theta = FMath::Acos(1.0f - 2.0f * t);
+            
+            // horizontal placement
+            const float Phi = 2.0f * PI * GoldenRatio * i;
+
+            const float X = FMath::Sin(Theta) * FMath::Cos(Phi);
+            const float Y = FMath::Sin(Theta) * FMath::Sin(Phi);
+            const float Z = FMath::Cos(Theta);
+            
+            FVector Direction(X, Y, Z);
+            FRotator Rotator = Direction.Rotation();
+            
+            RaycastRotators.Add(Rotator);
+        }
     }
     
     while (RaycastRotators.Num() > NumberOfRaycasts)
@@ -463,7 +510,16 @@ void UBoidSystem::GenerateRaycastRotators()
     }
 }
 
-FORCEINLINE bool UBoidSystem::AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const
+void UBoidSystem::SetUseUniformDistribution(bool bInUseUniformDistribution)
+{
+    if (bUseUniformDistribution != bInUseUniformDistribution)
+    {
+        bUseUniformDistribution = bInUseUniformDistribution;
+        GenerateRaycastRotators();
+    }
+}
+
+bool UBoidSystem::AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const
 {
     if (BoidA == BoidB)
     {

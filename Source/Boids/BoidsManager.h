@@ -136,26 +136,26 @@ private:
 
     //// Behavior
     // Separation
-    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Separation", meta = (ClampMin = "0.1", ClampMax = "20.0"))
+    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Separation", meta = (ClampMin = "0.1", ClampMax = "100.0"))
     float SeparationWeight = 1.5f;
-    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Separation", meta = (ClampMin = "1.0", ClampMax = "250.0"))
+    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Separation", meta = (ClampMin = "1.0", ClampMax = "1000.0"))
     float SeparationRadius = 100.0f;
 
     // Alignment
-    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Alignment", meta = (ClampMin = "0.1", ClampMax = "20.0"))
+    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Alignment", meta = (ClampMin = "0.1", ClampMax = "5.0"))
     float AlignmentWeight = 1.0f;
 
     // Cohesion
-    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Cohesion", meta = (ClampMin = "0.1", ClampMax = "20.0"))
+    UPROPERTY(EditAnywhere, Category = "Boids|Behavior|Cohesion", meta = (ClampMin = "0.1", ClampMax = "100.0"))
     float CohesionWeight = 1.0f;
     
     //// Avoidance
     // Obstacle
     UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance")
     bool bEnableObstacleAvoidance = true;
-    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "0.1", ClampMax = "20.0", EditCondition = "bEnableObstacleAvoidance"))
+    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "0.1", ClampMax = "100.0", EditCondition = "bEnableObstacleAvoidance"))
     float ObstacleAvoidanceWeight = 2.0f;
-    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "0.1", ClampMax = "1000.0", EditCondition = "bEnableObstacleAvoidance"))
+    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "0.1", ClampMax = "2000.0", EditCondition = "bEnableObstacleAvoidance"))
     float ObstacleDetectionDistance = 300.0f;
     UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "1", ClampMax = "12", EditCondition = "bEnableObstacleAvoidance"))
     int32 NumberOfRaycasts = 8;
@@ -163,4 +163,14 @@ private:
     // Boundary
     UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (ClampMin = "0.0"))
     float BoundaryWeight = 1.0f;
+    
+    UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (EditCondition = "bEnableObstacleAvoidance"))
+    bool bUseUniformDistribution = false;
+
+    // Dans la section public:
+    UFUNCTION(BlueprintPure, Category = "Boids|Obstacle Avoidance")
+    FORCEINLINE bool GetUseUniformDistribution() const { return bUseUniformDistribution; }
+
+    UFUNCTION(BlueprintCallable, Category = "Boids|Obstacle Avoidance")
+    void SetUseUniformDistribution(const bool bNewValue);
 };

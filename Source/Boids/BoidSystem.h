@@ -28,6 +28,8 @@ public:
 
     FORCEINLINE const TArray<ABoid*>& GetActors() const { return BoidActors; }
     FORCEINLINE TArray<ABoid*>& GetActors() { return BoidActors; }
+
+    FORCEINLINE const TArray<FRotator>& GetRaycastRotators() const { return RaycastRotators; }
     
     void SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
         const float InBoundaryWeight, const float InVelocity, const float InFieldOfViewAngle);
@@ -39,6 +41,7 @@ public:
     ABoidsManager* OwnerManager;
 
     void GenerateRaycastRotators();
+    void SetUseUniformDistribution(bool bInUseUniformDistribution);
 
 private:
     UPROPERTY()
@@ -59,6 +62,7 @@ private:
     TArray<FVector> CachedBoundaryForces;
     TArray<FVector> CachedObstacleAvoidanceForces;
 
+    bool bUseUniformDistribution;
     FCollisionQueryParams GlobalObstacleQueryParams;
     
     float SeparationWeight;
@@ -82,7 +86,7 @@ private:
     
     void UpdatePositions(const float DeltaTime);
     
-    FORCEINLINE bool AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const;
+    bool AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const;
 
     struct FBoidNeighborCache
     {
