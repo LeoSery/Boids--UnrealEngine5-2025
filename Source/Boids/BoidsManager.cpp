@@ -76,6 +76,12 @@ void ABoidsManager::SyncParametersToSystem() const
 		);
 
 		BoidSystem->SetUseUniformDistribution(bUseUniformDistribution);
+
+		UE_LOG(LogTemp, Display, TEXT("Boids Collision Parameters Updated:"));
+		UE_LOG(LogTemp, Display, TEXT("  - Obstacle Avoidance: %s"), bEnableObstacleAvoidance ? TEXT("Enabled") : TEXT("Disabled"));
+		UE_LOG(LogTemp, Display, TEXT("  - Detection Distance: %f"), ObstacleDetectionDistance);
+		UE_LOG(LogTemp, Display, TEXT("  - Avoidance Weight: %f"), ObstacleAvoidanceWeight);
+		UE_LOG(LogTemp, Display, TEXT("  - Number of Raycasts: %d"), NumberOfRaycasts);
 	}
 }
 
@@ -156,6 +162,7 @@ void ABoidsManager::SpawnBoids()
 	{
 		BoidSystem->SetActor(i, SpawnedBoids[i]);
 		SpawnedBoids[i]->BoidIndex = i;
+		SpawnedBoids[i]->bDebugRaycasts = bDebugRaycasts;
 	}
 }
 
@@ -187,7 +194,7 @@ FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position) const
 
 void ABoidsManager::SetNumberOfBoids(const int32 NewValue)
 {
-	NumberOfBoids = FMath::Clamp(NewValue, 1, 1000);
+	NumberOfBoids = FMath::Clamp(NewValue, 1, 2000);
 	SyncParametersToSystem();
 }
 
@@ -266,4 +273,23 @@ void ABoidsManager::SetBoundaryWeight(const float NewValue)
 {
 	BoundaryWeight = FMath::Max(0.0f, NewValue);
 	SyncParametersToSystem();
+}
+
+void ABoidsManager::SetDebugRaycasts(const bool bNewValue)
+{
+	if (bDebugRaycasts == bNewValue)
+		return;
+        
+	bDebugRaycasts = bNewValue;
+    
+	if (BoidSystem)
+	{
+		for (ABoid* Boid : BoidSystem->GetActors())
+		{
+			if (Boid)
+			{
+				Boid->bDebugRaycasts = bDebugRaycasts;
+			}
+		}
+	}
 }

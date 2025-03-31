@@ -107,6 +107,9 @@ public:
     // Boundary
     UFUNCTION(BlueprintCallable ,Category = "Boids|Obstacle Avoidance")
     void SetBoundaryWeight(const float NewValue);
+
+    UFUNCTION(BlueprintCallable, Category = "Boids|Debug")
+    void SetDebugRaycasts(const bool bNewValue);
     
     UFUNCTION(BlueprintCallable, Category = "Boids|Spawning")
     void RespawnBoids();
@@ -166,6 +169,9 @@ private:
     
     UPROPERTY(EditAnywhere, Category = "Boids|Obstacle Avoidance", meta = (EditCondition = "bEnableObstacleAvoidance"))
     bool bUseUniformDistribution = false;
+
+    UPROPERTY(EditAnywhere, Category = "Boids|Debug", meta = (EditCondition = "bEnableObstacleAvoidance"))
+    bool bDebugRaycasts = false;
 
     // Dans la section public:
     UFUNCTION(BlueprintPure, Category = "Boids|Obstacle Avoidance")

@@ -30,6 +30,83 @@ void ABoid::BeginPlay()
 	}
 }
 
+void ABoid::DebugDrawRaycasts()
+{
+    if (!BoidSystem || BoidIndex < 0 || !GetWorld())
+        return;
+        
+    const FVector CurrentLocation = GetActorLocation();
+    const FVector Direction = BoidSystem->GetDirection(BoidIndex).GetSafeNormal();
+	
+    DrawDebugLine(
+        GetWorld(),
+        CurrentLocation,
+        CurrentLocation + Direction * 100.0f,
+        FColor::Red,
+        false,
+        0.0f,
+        0,
+        2.0f
+    );
+	
+    const TArray<FRotator>& RaycastRotators = BoidSystem->GetRaycastRotators();
+    const float DetectionDistance = BoidSystem->GetObstacleDetectionDistance();
+    
+    for (const FRotator& Rotator : RaycastRotators)
+    {
+        FVector RayDirection = Rotator.RotateVector(Direction);
+        
+        FHitResult HitResult;
+        bool bHit = GetWorld()->LineTraceSingleByChannel(
+            HitResult,
+            CurrentLocation,
+            CurrentLocation + RayDirection * DetectionDistance,
+            ECC_WorldStatic,
+            FCollisionQueryParams::DefaultQueryParam
+        );
+        
+        FColor LineColor = bHit ? FColor::Green : FColor::Yellow;
+        float LineThickness = bHit ? 3.0f : 1.0f;
+        
+        DrawDebugLine(
+            GetWorld(),
+            CurrentLocation,
+            bHit ? HitResult.ImpactPoint : CurrentLocation + RayDirection * DetectionDistance,
+            LineColor,
+            false,
+            0.0f,
+            0,
+            LineThickness
+        );
+        
+        if (bHit)
+        {
+            DrawDebugSphere(
+                GetWorld(),
+                HitResult.ImpactPoint,
+                10.0f,
+                8,
+                FColor::Red,
+                false,
+                0.0f,
+                0,
+                1.0f
+            );
+        	
+            DrawDebugLine(
+                GetWorld(),
+                HitResult.ImpactPoint,
+                HitResult.ImpactPoint + HitResult.ImpactNormal * 50.0f,
+                FColor::Blue,
+                false,
+                0.0f,
+                0,
+                2.0f
+            );
+        }
+    }
+}
+
 void ABoid::Tick(const float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -47,54 +124,8 @@ void ABoid::Tick(const float DeltaTime)
 		SetActorLocationAndRotation(NewPosition, Direction.Rotation());
 	}
 	
-	//const FVector CurrentLocation = GetActorLocation();
-	// const FVector ForwardVector = GetActorForwardVector();
-	// const FVector UpVector = GetActorUpVector();
-	//
-	// constexpr float LineLength = 100.0f;
-	//
-	// // Direction (red)
-	// DrawDebugLine(
-	// 	GetWorld(),
-	// 	CurrentLocation,
-	// 	CurrentLocation + Direction * LineLength,
-	// 	FColor::Red,
-	// 	false,
-	// 	-1.0f,
-	// 	0,
-	// 	2.0f
-	// );
- //    
-	// // Forward Vector (blue)
-	// DrawDebugLine(
-	// 	GetWorld(),
-	// 	CurrentLocation,
-	// 	CurrentLocation + ForwardVector * LineLength,
-	// 	FColor::Blue,
-	// 	false,
-	// 	-1.0f,
-	// 	0,
-	// 	2.0f
-	// );
- //    
-	// // Up Vector (green)
-	// DrawDebugLine(
-	// 	GetWorld(),
-	// 	CurrentLocation,
-	// 	CurrentLocation + UpVector * LineLength,
-	// 	FColor::Green,
-	// 	false,
-	// 	-1.0f,
-	// 	0,
-	// 	2.0f
-	// );
-	//
-	// FHitResult TestHit;
-	// const bool bHits = GetWorld()->LineTraceSingleByChannel(
-	// 	TestHit,
-	// 	GetActorLocation(),
-	// 	GetActorLocation() + FVector(0, 0, 5000),
-	// 	ECC_Visibility,
-	// 	FCollisionQueryParams()
-	// );
+	if (bDebugRaycasts)
+	{
+		DebugDrawRaycasts();
+	}
 }

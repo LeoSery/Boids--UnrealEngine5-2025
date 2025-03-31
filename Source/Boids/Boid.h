@@ -28,9 +28,14 @@ public:
 	
 	UPROPERTY()
 	UBoidSystem* BoidSystem = nullptr;
+
+	UPROPERTY(EditAnywhere, Category = "Boids|Debug")
+	bool bDebugRaycasts = false;
 	
 protected:
 
 	UPROPERTY()
 	USceneComponent* Root;
+	
+	void DebugDrawRaycasts();
 };

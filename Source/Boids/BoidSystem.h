@@ -26,10 +26,14 @@ public:
     
     FORCEINLINE void SetActor(const int32 Index, ABoid* Actor) { if (BoidActors.IsValidIndex(Index)) BoidActors[Index] = Actor; }
 
+    FORCEINLINE float GetObstacleDetectionDistance() const { return ObstacleDetectionDistance; }
+    FORCEINLINE bool IsObstacleAvoidanceEnabled() const { return bEnableObstacleAvoidance; }
+
     FORCEINLINE const TArray<ABoid*>& GetActors() const { return BoidActors; }
     FORCEINLINE TArray<ABoid*>& GetActors() { return BoidActors; }
 
     FORCEINLINE const TArray<FRotator>& GetRaycastRotators() const { return RaycastRotators; }
+    FORCEINLINE bool GetDebugDraw() const { return bEnableObstacleAvoidance; }
     
     void SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
         const float InBoundaryWeight, const float InVelocity, const float InFieldOfViewAngle);
