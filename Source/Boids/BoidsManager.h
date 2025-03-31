@@ -123,7 +123,7 @@ protected:
 
 private:
     //// General
-    UPROPERTY(EditAnywhere, Category = "Boids|General", meta = (ClampMin = "1", ClampMax = "1000"))
+    UPROPERTY(EditAnywhere, Category = "Boids|General", meta = (ClampMin = "1", ClampMax = "2000"))
     int32 NumberOfBoids = 100;
     UPROPERTY(EditAnywhere, Category = "Boids|General", meta = (ClampMin = "1.0", ClampMax = "2000.0"))
     float Velocity = 1000.0f;

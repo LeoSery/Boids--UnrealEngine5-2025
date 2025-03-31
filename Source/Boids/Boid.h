@@ -16,6 +16,7 @@ public:
 	ABoid();
 	
 	virtual void Tick(const float DeltaTime) override;
+	virtual void BeginPlay() override;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boids|Settings")
 	UStaticMeshComponent* Mesh;

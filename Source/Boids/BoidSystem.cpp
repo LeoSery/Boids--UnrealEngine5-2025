@@ -28,8 +28,6 @@ void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& Initia
     CachedCohesionForces.SetNum(NumBoids);
     CachedBoundaryForces.SetNum(NumBoids);
     CachedObstacleAvoidanceForces.SetNum(NumBoids);
-    
-    LastUpdatedPositions.SetNum(NumBoids);
 
     GlobalObstacleQueryParams = FCollisionQueryParams::DefaultQueryParam;
     GlobalObstacleQueryParams.bTraceComplex = false;
@@ -166,6 +164,49 @@ void UBoidSystem::Update(const float DeltaTime)
     }
 }
 
+// void UBoidSystem::FindAllNeighbors()
+// {
+//     NeighborCache.Clear();
+//     
+//     const float PerceptionRadiusSq = PerceptionRadius * PerceptionRadius;
+//     const int32 NumBoids = Positions.Num();
+//     
+//     for (int32 i = 0; i < NumBoids; ++i)
+//     {
+//         for (int32 j = i + 1; j < NumBoids; ++j)
+//         {
+//             const float DistSquared = FVector::DistSquared(Positions[i], Positions[j]);
+//             
+//             if (DistSquared <= PerceptionRadiusSq)
+//             {
+//                 const FVector DirectionItoJ = (Positions[j] - Positions[i]).GetSafeNormal();
+//                 const float DotProductI = FVector::DotProduct(Directions[i], DirectionItoJ);
+//                 
+//                 const FVector DirectionJtoI = -DirectionItoJ;
+//                 const float DotProductJ = FVector::DotProduct(Directions[j], DirectionJtoI);
+//                 
+//                 if (DotProductI >= FOVDotProductThreshold)
+//                 {
+//                     NeighborCache.Neighbors[i].Add(j);
+//                 }
+//                 
+//                 if (DotProductJ >= FOVDotProductThreshold)
+//                 {
+//                     NeighborCache.Neighbors[j].Add(i);
+//                 }
+//             }
+//         }
+//     }
+//     
+//     int32 MaxNeighborsThisFrame = 0;
+//     for (int32 i = 0; i < NumBoids; ++i)
+//     {
+//         MaxNeighborsThisFrame = FMath::Max(MaxNeighborsThisFrame, NeighborCache.Neighbors[i].Num());
+//     }
+//     
+//     LastFrameMaxNeighbors = FMath::Max(1, MaxNeighborsThisFrame + (MaxNeighborsThisFrame / 4));
+// }
+
 void UBoidSystem::FindAllNeighbors()
 {
     NeighborCache.Clear();
@@ -173,33 +214,50 @@ void UBoidSystem::FindAllNeighbors()
     const float PerceptionRadiusSq = PerceptionRadius * PerceptionRadius;
     const int32 NumBoids = Positions.Num();
     
-    for (int32 i = 0; i < NumBoids; ++i)
+    // Création de structures temporaires pour éviter les conflits d'accès
+    TArray<TArray<int32>> TempNeighbors;
+    TempNeighbors.SetNum(NumBoids);
+    
+    // Traitement parallèle de chaque boid
+    ParallelFor(NumBoids, [&](int32 i)
     {
-        for (int32 j = i + 1; j < NumBoids; ++j)
+        TArray<int32>& MyNeighbors = TempNeighbors[i];
+        const FVector& MyPosition = Positions[i];
+        const FVector& MyDirection = Directions[i];
+        
+        // Vérification de tous les autres boids
+        for (int32 j = 0; j < NumBoids; ++j)
         {
-            const float DistSquared = FVector::DistSquared(Positions[i], Positions[j]);
+            // Ne pas se considérer comme son propre voisin
+            if (i == j)
+            {
+                continue;
+            }
             
+            const float DistSquared = FVector::DistSquared(MyPosition, Positions[j]);
+            
+            // Vérifier si le boid j est dans le rayon de perception du boid i
             if (DistSquared <= PerceptionRadiusSq)
             {
-                const FVector DirectionItoJ = (Positions[j] - Positions[i]).GetSafeNormal();
-                const float DotProductI = FVector::DotProduct(Directions[i], DirectionItoJ);
+                // Vérifier si le boid j est dans le champ de vision du boid i
+                const FVector DirectionToOther = (Positions[j] - MyPosition).GetSafeNormal();
+                const float DotProduct = FVector::DotProduct(MyDirection, DirectionToOther);
                 
-                const FVector DirectionJtoI = -DirectionItoJ;
-                const float DotProductJ = FVector::DotProduct(Directions[j], DirectionJtoI);
-                
-                if (DotProductI >= FOVDotProductThreshold)
+                if (DotProduct >= FOVDotProductThreshold)
                 {
-                    NeighborCache.Neighbors[i].Add(j);
-                }
-                
-                if (DotProductJ >= FOVDotProductThreshold)
-                {
-                    NeighborCache.Neighbors[j].Add(i);
+                    MyNeighbors.Add(j);
                 }
             }
         }
+    });
+    
+    // Fusion des résultats dans le cache principal (non parallélisée pour éviter les conflits)
+    for (int32 i = 0; i < NumBoids; ++i)
+    {
+        NeighborCache.Neighbors[i] = MoveTemp(TempNeighbors[i]);
     }
     
+    // Calcul des statistiques
     int32 MaxNeighborsThisFrame = 0;
     for (int32 i = 0; i < NumBoids; ++i)
     {
@@ -372,7 +430,7 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
         return;
     }
     
-    ParallelFor(Positions.Num(), [&](int32 i)
+    ParallelFor(Positions.Num(), [&](const int32 i)
     {
         FVector AvoidanceForce = FVector::ZeroVector;
         FVector BoidPosition = Positions[i];
@@ -419,7 +477,7 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
 
 void UBoidSystem::UpdatePositions(const float DeltaTime)
 {
-    ParallelFor(Positions.Num(), [&](int32 i)
+    ParallelFor(Positions.Num(), [&](const int32 i)
     {
         const FVector Movement = Directions[i] * Velocity * DeltaTime;
         Positions[i] += Movement;
@@ -429,20 +487,6 @@ void UBoidSystem::UpdatePositions(const float DeltaTime)
             Positions[i] = BoidActors[i]->BoidsManager->ConstrainPositionToBox(Positions[i]);
         }
     });
-
-    constexpr float MinUpdateDistanceSquared = 1.0f;
-    
-    for (int32 i = 0; i < Positions.Num(); ++i)
-    {
-        if (BoidActors[i])
-        {
-            if (FVector::DistSquared(LastUpdatedPositions[i], Positions[i]) > MinUpdateDistanceSquared)
-            {
-                BoidActors[i]->SetActorLocationAndRotation(Positions[i], Directions[i].Rotation());
-                LastUpdatedPositions[i] = Positions[i];
-            }
-        }
-    }
 }
 
 void UBoidSystem::GenerateRaycastRotators()
