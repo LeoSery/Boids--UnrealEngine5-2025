@@ -19,10 +19,12 @@ public:
     virtual void OnConstruction(const FTransform& Transform) override;
     virtual void BeginPlay() override;
     
-    void SpawnBoids();
     FVector ConstrainPositionToBox(const FVector& Position) const;
     
     void SyncParametersToSystem() const;
+
+    UFUNCTION(BlueprintCallable, Category = "Boids|Spawning")
+    void SpawnBoids() const;
     
     //// General
     UFUNCTION(BlueprintPure, Category = "Boids|General")
@@ -110,12 +112,15 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Boids|Debug")
     void SetDebugRaycasts(const bool bNewValue);
-    
-    UFUNCTION(BlueprintCallable, Category = "Boids|Spawning")
-    void RespawnBoids();
-    
-    UPROPERTY(EditAnywhere, Category = "Boids|Spawning")
-    TSubclassOf<ABoid> BoidPrefab;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Boids|Rendering")
+    UInstancedStaticMeshComponent* BoidInstancedMesh;
+
+    UPROPERTY(EditAnywhere, Category = "Boids|Rendering")
+    UStaticMesh* BoidMesh;
+
+    UPROPERTY(EditAnywhere, Category = "Boids|Rendering")
+    FRotator MeshRotationOffset = FRotator(0, -90.0f, 0);
     
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Boids|Spawning")
     UBoxComponent* SpawnVolume;
@@ -172,11 +177,13 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Boids|Debug", meta = (EditCondition = "bEnableObstacleAvoidance"))
     bool bDebugRaycasts = false;
-
-    // Dans la section public:
+    
     UFUNCTION(BlueprintPure, Category = "Boids|Obstacle Avoidance")
     FORCEINLINE bool GetUseUniformDistribution() const { return bUseUniformDistribution; }
 
     UFUNCTION(BlueprintCallable, Category = "Boids|Obstacle Avoidance")
     void SetUseUniformDistribution(const bool bNewValue);
+    
+    UFUNCTION(BlueprintCallable, Category = "Boids|Debug")
+    void DebugDrawRaycasts(const int32 BoidIndex);
 };

@@ -24,13 +24,12 @@ public:
     FORCEINLINE void SetPosition(const int32 Index, const FVector& Position) { if (Positions.IsValidIndex(Index)) Positions[Index] = Position; }
     FORCEINLINE void SetDirection(const int32 Index, const FVector& Direction) { if (Directions.IsValidIndex(Index)) Directions[Index] = Direction; }
     
-    FORCEINLINE void SetActor(const int32 Index, ABoid* Actor) { if (BoidActors.IsValidIndex(Index)) BoidActors[Index] = Actor; }
+    FORCEINLINE const TArray<FVector>& GetPositions() const { return Positions; }
+    FORCEINLINE const TArray<FVector>& GetDirections() const { return Directions; }
+    FORCEINLINE int32 GetCount() const { return Positions.Num(); }
 
     FORCEINLINE float GetObstacleDetectionDistance() const { return ObstacleDetectionDistance; }
     FORCEINLINE bool IsObstacleAvoidanceEnabled() const { return bEnableObstacleAvoidance; }
-
-    FORCEINLINE const TArray<ABoid*>& GetActors() const { return BoidActors; }
-    FORCEINLINE TArray<ABoid*>& GetActors() { return BoidActors; }
 
     FORCEINLINE const TArray<FRotator>& GetRaycastRotators() const { return RaycastRotators; }
     FORCEINLINE bool GetDebugDraw() const { return bEnableObstacleAvoidance; }
@@ -45,7 +44,7 @@ public:
     ABoidsManager* OwnerManager;
 
     void GenerateRaycastRotators();
-    void SetUseUniformDistribution(bool bInUseUniformDistribution);
+    void SetUseUniformDistribution(const bool bInUseUniformDistribution);
 
 private:
     UPROPERTY()
@@ -53,9 +52,6 @@ private:
     
     UPROPERTY()
     TArray<FVector> Directions;
-
-    UPROPERTY()
-    TArray<ABoid*> BoidActors;
 
     UPROPERTY()
     TArray<FRotator> RaycastRotators;
@@ -113,7 +109,7 @@ private:
         double ObstacleAvoidanceTime = 0.0;
         double UpdatePositionsTime = 0.0;
         
-        void LogResults()
+        void LogResults() const
         {
             UE_LOG(LogTemp, Warning, TEXT("--- PROFIL BOIDS ---"));
             UE_LOG(LogTemp, Warning, TEXT("Update total: %.3f ms"), UpdateTotal * 1000.0);

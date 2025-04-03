@@ -1,12 +1,17 @@
 ﻿#include "BoidsManager.h"
-#include "Boid.h"
 #include "BoidSystem.h"
+#include "Components/InstancedStaticMeshComponent.h"
 
 ABoidsManager::ABoidsManager()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
 	NumberOfBoids = 100;
+
+	if (!RootComponent)
+	{
+		RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
+	}
 
 	SpawnVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("SpawnVolume"));
 	SpawnVolume->SetupAttachment(RootComponent);
@@ -19,6 +24,12 @@ ABoidsManager::ABoidsManager()
 		SpawnVolume->SetHiddenInGame(false);
 		SpawnVolume->SetVisibility(true);
 	}
+
+	BoidInstancedMesh = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("BoidInstancedMesh"));
+	BoidInstancedMesh->SetupAttachment(RootComponent);
+	BoidInstancedMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	BoidInstancedMesh->SetGenerateOverlapEvents(false);
+	BoidInstancedMesh->SetCastShadow(false);
 }
 
 void ABoidsManager::BeginPlay()
@@ -27,6 +38,8 @@ void ABoidsManager::BeginPlay()
 
 	BoidSystem = NewObject<UBoidSystem>(this);
 	BoidSystem->OwnerManager = this;
+
+	UE_LOG(LogTemp, Warning, TEXT("OwnerManager assigned: %s"), (BoidSystem && BoidSystem->OwnerManager) ? TEXT("Yes") : TEXT("No"));
 
 	SyncParametersToSystem();
 
@@ -50,6 +63,32 @@ void ABoidsManager::Tick(const float DeltaTime)
 	if (BoidSystem)
 	{
 		BoidSystem->Update(DeltaTime);
+		
+		const int32 NumBoids = BoidSystem->GetCount();
+		for (int32 i = 0; i < NumBoids; ++i)
+		{
+			const FVector Position = BoidSystem->GetPosition(i);
+			const FVector Direction = BoidSystem->GetDirection(i).GetSafeNormal();
+			
+			const FRotator DirectionRotation = Direction.Rotation();
+			const FRotator FinalRotation = DirectionRotation + MeshRotationOffset;
+    
+			FTransform InstanceTransform;
+			InstanceTransform.SetLocation(Position);
+			InstanceTransform.SetRotation(FinalRotation.Quaternion());
+			BoidInstancedMesh->UpdateInstanceTransform(i, InstanceTransform, false);
+		}
+		
+		BoidInstancedMesh->MarkRenderStateDirty();
+		
+		if (bDebugRaycasts)
+		{
+			const int32 MaxDebugBoids = FMath::Min(5, NumBoids);
+			for (int32 i = 0; i < MaxDebugBoids; i++)
+			{
+				DebugDrawRaycasts(i);
+			}
+		}
 	}
 }
 
@@ -76,28 +115,7 @@ void ABoidsManager::SyncParametersToSystem() const
 		);
 
 		BoidSystem->SetUseUniformDistribution(bUseUniformDistribution);
-
-		UE_LOG(LogTemp, Display, TEXT("Boids Collision Parameters Updated:"));
-		UE_LOG(LogTemp, Display, TEXT("  - Obstacle Avoidance: %s"), bEnableObstacleAvoidance ? TEXT("Enabled") : TEXT("Disabled"));
-		UE_LOG(LogTemp, Display, TEXT("  - Detection Distance: %f"), ObstacleDetectionDistance);
-		UE_LOG(LogTemp, Display, TEXT("  - Avoidance Weight: %f"), ObstacleAvoidanceWeight);
-		UE_LOG(LogTemp, Display, TEXT("  - Number of Raycasts: %d"), NumberOfRaycasts);
 	}
-}
-
-void ABoidsManager::RespawnBoids()
-{
-	if (BoidSystem)
-	{
-		for (const TArray<ABoid*>& AllActors = BoidSystem->GetActors(); ABoid* Boid : AllActors)
-		{
-			if (Boid)
-			{
-				Boid->Destroy();
-			}
-		}
-	}
-	SpawnBoids();
 }
 
 void ABoidsManager::SetUseUniformDistribution(const bool bNewValue)
@@ -110,24 +128,104 @@ void ABoidsManager::SetUseUniformDistribution(const bool bNewValue)
 	}
 }
 
-void ABoidsManager::SpawnBoids()
+void ABoidsManager::DebugDrawRaycasts(const int32 BoidIndex)
 {
-	if (!BoidPrefab)
+	if (!BoidSystem || BoidIndex < 0 || BoidIndex >= BoidSystem->GetCount() || !GetWorld())
 	{
-		UE_LOG(LogTemp, Error, TEXT("Boid non défini dans BoidManager!"));
+        return;
+	}
+        
+    const FVector CurrentLocation = BoidSystem->GetPosition(BoidIndex);
+    const FVector Direction = BoidSystem->GetDirection(BoidIndex).GetSafeNormal();
+    
+    DrawDebugLine(
+        GetWorld(),
+        CurrentLocation,
+        CurrentLocation + Direction * 100.0f,
+        FColor::Red,
+        false,
+        0.0f,
+        0,
+        2.0f
+    );
+    
+    const TArray<FRotator>& RaycastRotators = BoidSystem->GetRaycastRotators();
+    const float DetectionDistance = BoidSystem->GetObstacleDetectionDistance();
+    
+    for (const FRotator& Rotator : RaycastRotators)
+    {
+        FVector RayDirection = Rotator.RotateVector(Direction);
+        
+        FHitResult HitResult;
+        bool bHit = GetWorld()->LineTraceSingleByChannel(
+            HitResult,
+            CurrentLocation,
+            CurrentLocation + RayDirection * DetectionDistance,
+            ECC_WorldStatic,
+            FCollisionQueryParams::DefaultQueryParam
+        );
+        
+        FColor LineColor = bHit ? FColor::Green : FColor::Yellow;
+        float LineThickness = bHit ? 3.0f : 1.0f;
+        
+        DrawDebugLine(
+            GetWorld(),
+            CurrentLocation,
+            bHit ? HitResult.ImpactPoint : CurrentLocation + RayDirection * DetectionDistance,
+            LineColor,
+            false,
+            0.0f,
+            0,
+            LineThickness
+        );
+        
+        if (bHit)
+        {
+            DrawDebugSphere(
+                GetWorld(),
+                HitResult.ImpactPoint,
+                10.0f,
+                8,
+                FColor::Red,
+                false,
+                0.0f,
+                0,
+                1.0f
+            );
+            
+            DrawDebugLine(
+                GetWorld(),
+                HitResult.ImpactPoint,
+                HitResult.ImpactPoint + HitResult.ImpactNormal * 50.0f,
+                FColor::Blue,
+                false,
+                0.0f,
+                0,
+                2.0f
+            );
+        }
+    }
+}
+
+void ABoidsManager::SpawnBoids() const
+{
+	if (!BoidMesh)
+	{
+		UE_LOG(LogTemp, Error, TEXT("Boid not define in BoidManager!"));
 		return;
 	}
+
+	BoidInstancedMesh->SetStaticMesh(BoidMesh);
+	BoidInstancedMesh->ClearInstances();
 	
 	const FVector BoxOrigin = SpawnVolume->GetComponentLocation();
 	const FVector BoxExtent = SpawnVolume->GetScaledBoxExtent();
 	
 	TArray<FVector> InitialPositions;
 	TArray<FVector> InitialDirections;
-	TArray<ABoid*> SpawnedBoids;
 	
 	InitialPositions.Reserve(NumberOfBoids);
 	InitialDirections.Reserve(NumberOfBoids);
-	SpawnedBoids.Reserve(NumberOfBoids);
 	
 	for (int32 i = 0; i < NumberOfBoids; i++)
 	{
@@ -137,33 +235,18 @@ void ABoidsManager::SpawnBoids()
 			FMath::RandRange(-BoxExtent.Z, BoxExtent.Z)
 		);
         
-		const FVector SpawnLocation = BoxOrigin + RandomOffset;
-		const FRotator SpawnRotation = FMath::VRand().Rotation();
+		const FVector SpawnLocation = ConstrainPositionToBox(BoxOrigin + RandomOffset);
+		const FVector RandomDirection = FMath::VRand();
+		const FRotator SpawnRotation = RandomDirection.Rotation();
+		
+		FTransform InstanceTransform(SpawnRotation, SpawnLocation);
+		BoidInstancedMesh->AddInstance(InstanceTransform);
         
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		if (ABoid* NewBoid = GetWorld()->SpawnActor<ABoid>(BoidPrefab, SpawnLocation, SpawnRotation, SpawnParams))
-		{
-			NewBoid->BoidsManager = this;
-			NewBoid->BoidSystem = BoidSystem;
-			
-			const FVector RandomDirection = FMath::VRand();
-			InitialDirections.Add(RandomDirection);
-			
-			InitialPositions.Add(SpawnLocation);
-			SpawnedBoids.Add(NewBoid);
-		}
+		InitialPositions.Add(SpawnLocation);
+		InitialDirections.Add(RandomDirection);
 	}
 	
-	BoidSystem->Initialize(SpawnedBoids.Num(), InitialPositions, InitialDirections);
-
-	for (int32 i = 0; i < SpawnedBoids.Num(); i++)
-	{
-		BoidSystem->SetActor(i, SpawnedBoids[i]);
-		SpawnedBoids[i]->BoidIndex = i;
-		SpawnedBoids[i]->bDebugRaycasts = bDebugRaycasts;
-	}
+	BoidSystem->Initialize(NumberOfBoids, InitialPositions, InitialDirections);
 }
 
 FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position) const
@@ -188,6 +271,12 @@ FVector ABoidsManager::ConstrainPositionToBox(const FVector& Position) const
 		ConstrainedPos.Z = -BoxExtent.Z;
 	else if (LocalPos.Z > BoxExtent.Z) 
 		ConstrainedPos.Z = BoxExtent.Z;
+
+	if (!LocalPos.Equals(ConstrainedPos, 0.1f))
+	{
+		UE_LOG(LogTemp, Verbose, TEXT("Position contrainte dans box: %s -> %s"), 
+			  *LocalPos.ToString(), *ConstrainedPos.ToString());
+	}
     
 	return BoxOrigin + ConstrainedPos;
 }
@@ -278,18 +367,9 @@ void ABoidsManager::SetBoundaryWeight(const float NewValue)
 void ABoidsManager::SetDebugRaycasts(const bool bNewValue)
 {
 	if (bDebugRaycasts == bNewValue)
+	{
 		return;
+	}
         
 	bDebugRaycasts = bNewValue;
-    
-	if (BoidSystem)
-	{
-		for (ABoid* Boid : BoidSystem->GetActors())
-		{
-			if (Boid)
-			{
-				Boid->bDebugRaycasts = bDebugRaycasts;
-			}
-		}
-	}
 }

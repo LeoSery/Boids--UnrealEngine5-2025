@@ -1,6 +1,5 @@
 ﻿#include "BoidSystem.h"
 #include "BoidsManager.h"
-#include "Boid.h"
 
 UBoidSystem::UBoidSystem() : OwnerManager(nullptr)
 {
@@ -13,7 +12,6 @@ void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& Initia
 {
     Positions.SetNum(NumBoids);
     Directions.SetNum(NumBoids);
-    BoidActors.SetNum(NumBoids);
     
     for (int32 i = 0; i < NumBoids; ++i)
     {
@@ -31,14 +29,6 @@ void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& Initia
 
     GlobalObstacleQueryParams = FCollisionQueryParams::DefaultQueryParam;
     GlobalObstacleQueryParams.bTraceComplex = false;
-    
-    for (const ABoid* Boid : BoidActors)
-    {
-        if (Boid)
-        {
-            GlobalObstacleQueryParams.AddIgnoredActor(Boid);
-        }
-    }
 }
 
 void UBoidSystem::SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
@@ -237,7 +227,7 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
     
     const int32 NumBoids = Positions.Num();
     
-    ParallelFor(NumBoids, [&](int32 i)
+    ParallelFor(NumBoids, [&](const int32 i)
     {
         if (NeighborCache.Neighbors[i].Num() == 0)
         {
@@ -279,7 +269,7 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
             }
         }
         OutSeparationForces[i] = SeparationForce;
-        
+
         const int32 NeighborCount = NeighborCache.Neighbors[i].Num();
         if (NeighborCount > 0)
         {
@@ -441,8 +431,8 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
                 }
 
                 Force *= 1.0f + SpeedRatio * 1.5f;
-                
-                FVector AwayFromObstacle = -WorldDir * Force;
+
+                const FVector AwayFromObstacle = -WorldDir * Force;
                 AvoidanceForce += AwayFromObstacle;
                 HitCount++;
             }
@@ -468,9 +458,20 @@ void UBoidSystem::UpdatePositions(const float DeltaTime)
         const FVector Movement = Directions[i] * Velocity * DeltaTime;
         Positions[i] += Movement;
         
-        if (BoidActors[i] && BoidActors[i]->BoidsManager)
+        if (OwnerManager)
         {
-            Positions[i] = BoidActors[i]->BoidsManager->ConstrainPositionToBox(Positions[i]);
+            const FVector OldPos = Positions[i];
+            Positions[i] = OwnerManager->ConstrainPositionToBox(Positions[i]);
+            
+            if (!OldPos.Equals(Positions[i], 0.1f))
+            {
+                UE_LOG(LogTemp, Verbose, TEXT("Position contrainte: %s -> %s"), 
+                      *OldPos.ToString(), *Positions[i].ToString());
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("OwnerManager non défini dans UpdatePositions!"));
         }
     });
 }
@@ -517,7 +518,7 @@ void UBoidSystem::GenerateRaycastRotators()
         for (int32 i = 0; i < NumberOfRaycasts; ++i)
         {
             // Vertical placement
-            const float t = (float)i / NumberOfRaycasts;
+            const float t = static_cast<float>(i) / NumberOfRaycasts;
             const float Theta = FMath::Acos(1.0f - 2.0f * t);
             
             // horizontal placement
@@ -540,7 +541,7 @@ void UBoidSystem::GenerateRaycastRotators()
     }
 }
 
-void UBoidSystem::SetUseUniformDistribution(bool bInUseUniformDistribution)
+void UBoidSystem::SetUseUniformDistribution(const bool bInUseUniformDistribution)
 {
     if (bUseUniformDistribution != bInUseUniformDistribution)
     {
