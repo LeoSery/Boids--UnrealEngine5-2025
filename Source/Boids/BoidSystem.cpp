@@ -2,6 +2,10 @@
 #include "BoidsManager.h"
 #include "Boid.h"
 
+/**
+ * @brief Default constructor
+ * @details Initializes the raycast system with default values and generates initial raycast rotators
+ */
 UBoidSystem::UBoidSystem() : OwnerManager(nullptr)
 {
     NumberOfRaycasts = 8;
@@ -9,6 +13,14 @@ UBoidSystem::UBoidSystem() : OwnerManager(nullptr)
     GenerateRaycastRotators();
 }
 
+/**
+ * @brief Initializes the boid system with the specified number of boids
+ * @details Sets up all necessary arrays and data structures for simulation
+ * 
+ * @param NumBoids Number of boids to initialize
+ * @param InitialPositions Starting positions for each boid
+ * @param InitialDirections Starting directions for each boid
+ */
 void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& InitialPositions, const TArray<FVector>& InitialDirections)
 {
     Positions.SetNum(NumBoids);
@@ -41,36 +53,13 @@ void UBoidSystem::Initialize(const int32 NumBoids, const TArray<FVector>& Initia
     }
 }
 
-void UBoidSystem::SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
-    const float InBoundaryWeight, const float InVelocity, const float InFieldOfViewAngle)
-{
-    SeparationWeight = InSeparationWeight;
-    AlignmentWeight = InAlignmentWeight;
-    CohesionWeight = InCohesionWeight;
-    SeparationRadius = InSeparationRadius;
-    PerceptionRadius = InPerceptionRadius;
-    BoundaryWeight = InBoundaryWeight;
-    Velocity = InVelocity;
-    FieldOfViewAngle = InFieldOfViewAngle;
-
-    FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
-}
-
-void UBoidSystem::SetObstacleAvoidanceParameters(const float InObstacleAvoidanceWeight, const float InObstacleDetectionDistance,
-    const int32 InNumberOfRaycasts, const bool bInEnableObstacleAvoidance)
-{
-    ObstacleAvoidanceWeight = InObstacleAvoidanceWeight;
-    ObstacleDetectionDistance = InObstacleDetectionDistance;
-
-    if (NumberOfRaycasts != InNumberOfRaycasts)
-    {
-        NumberOfRaycasts = InNumberOfRaycasts;
-        GenerateRaycastRotators();
-    }
-    
-    bEnableObstacleAvoidance = bInEnableObstacleAvoidance;
-}
-
+/**
+ * @brief Updates the entire boid simulation for one frame
+ * @details Calculates all forces affecting each boid, combines them based on priorities,
+ *          and updates positions and orientations
+ * 
+ * @param DeltaTime Time elapsed since the last frame in seconds
+ */
 void UBoidSystem::Update(const float DeltaTime)
 {
     double StartUpdateTime = 0.0;
@@ -113,26 +102,32 @@ void UBoidSystem::Update(const float DeltaTime)
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
         FVector TotalForce = FVector::ZeroVector;
-        
+
+        // Force prioritization system:
+        // 1. Obstacle avoidance (highest priority - safety critical)
+        // 2. Boundary forces (second priority - containment)
+        // 3. Flocking behaviors (lowest priority - only applied when safe)
         if (!CachedObstacleAvoidanceForces[i].IsNearlyZero())
         {
+            // Obstacle avoidance force
             TotalForce = CachedObstacleAvoidanceForces[i] * ObstacleAvoidanceWeight;
         }
         else if (!CachedBoundaryForces[i].IsNearlyZero())
         {
+            // Boundary avoidance force
             TotalForce = CachedBoundaryForces[i] * BoundaryWeight;
         }
         else
         {
-            // Séparation
+            // Separation force
             if (!CachedSeparationForces[i].IsNearlyZero())
                 TotalForce += CachedSeparationForces[i] * SeparationWeight;
             
-            // Alignement
+            // Alignment force
             if (!CachedAlignmentForces[i].IsNearlyZero())
                 TotalForce += CachedAlignmentForces[i] * AlignmentWeight;
             
-            // Cohésion
+            // Cohesion force
             if (!CachedCohesionForces[i].IsNearlyZero())
                 TotalForce += CachedCohesionForces[i] * CohesionWeight;
         }
@@ -142,7 +137,7 @@ void UBoidSystem::Update(const float DeltaTime)
         
         TotalForce.Normalize();
         
-        // Appliquer la direction
+        // smoothly apply the new direction
         Directions[i] = FMath::VInterpNormalRotationTo(
             Directions[i],
             TotalForce,
@@ -171,58 +166,157 @@ void UBoidSystem::Update(const float DeltaTime)
     }
 }
 
-void UBoidSystem::FindAllNeighbors()
+/**
+ * @brief Sets all behavior parameters for the boid simulation
+ * @details Updates all parameters related to flocking behavior and recalculates dependent values
+ * 
+ * @param InSeparationWeight Weight of the separation force
+ * @param InAlignmentWeight Weight of the alignment force
+ * @param InCohesionWeight Weight of the cohesion force
+ * @param InSeparationRadius Distance at which separation begins to take effect
+ * @param InPerceptionRadius Maximum distance at which boids can detect each other
+ * @param InBoundaryWeight Weight of boundary avoidance forces
+ * @param InVelocity Base movement speed of boids
+ * @param InFieldOfViewAngle Angle of visibility cone in degrees
+ */
+void UBoidSystem::SetBehaviorParameters(const float InSeparationWeight, const float InAlignmentWeight, const float InCohesionWeight, const float InSeparationRadius, const float InPerceptionRadius,
+    const float InBoundaryWeight, const float InVelocity, const float InFieldOfViewAngle)
 {
-    NeighborCache.Clear();
-    
-    const float PerceptionRadiusSq = PerceptionRadius * PerceptionRadius;
-    const int32 NumBoids = Positions.Num();
-    
-    TArray<TArray<int32>> TempNeighbors;
-    TempNeighbors.SetNum(NumBoids);
-    
-    ParallelFor(NumBoids, [&](const int32 i)
-    {
-        TArray<int32>& MyNeighbors = TempNeighbors[i];
-        const FVector& MyPosition = Positions[i];
-        const FVector& MyDirection = Directions[i];
-        
-        for (int32 j = 0; j < NumBoids; ++j)
-        {
-            if (i == j)
-            {
-                continue;
-            }
-            
-            const float DistSquared = FVector::DistSquared(MyPosition, Positions[j]);
-            
-            if (DistSquared <= PerceptionRadiusSq)
-            {
-                const FVector DirectionToOther = (Positions[j] - MyPosition).GetSafeNormal();
-                const float DotProduct = FVector::DotProduct(MyDirection, DirectionToOther);
-                
-                if (DotProduct >= FOVDotProductThreshold)
-                {
-                    MyNeighbors.Add(j);
-                }
-            }
-        }
-    });
-    
-    for (int32 i = 0; i < NumBoids; ++i)
-    {
-        NeighborCache.Neighbors[i] = MoveTemp(TempNeighbors[i]);
-    }
-    
-    int32 MaxNeighborsThisFrame = 0;
-    for (int32 i = 0; i < NumBoids; ++i)
-    {
-        MaxNeighborsThisFrame = FMath::Max(MaxNeighborsThisFrame, NeighborCache.Neighbors[i].Num());
-    }
-    
-    LastFrameMaxNeighbors = FMath::Max(1, MaxNeighborsThisFrame + (MaxNeighborsThisFrame / 4));
+    SeparationWeight = InSeparationWeight;
+    AlignmentWeight = InAlignmentWeight;
+    CohesionWeight = InCohesionWeight;
+    SeparationRadius = InSeparationRadius;
+    PerceptionRadius = InPerceptionRadius;
+    BoundaryWeight = InBoundaryWeight;
+    Velocity = InVelocity;
+    FieldOfViewAngle = InFieldOfViewAngle;
+
+    FOVDotProductThreshold = FMath::Cos(FMath::DegreesToRadians(FieldOfViewAngle * 0.5f));
 }
 
+/**
+ * @brief Sets all obstacle avoidance parameters
+ * @details Updates parameters controlling how boids detect and avoid obstacles
+ * 
+ * @param InObstacleAvoidanceWeight Weight of obstacle avoidance forces
+ * @param InObstacleDetectionDistance Maximum distance for obstacle detection
+ * @param InNumberOfRaycasts Number of rays used for obstacle detection
+ * @param bInEnableObstacleAvoidance Whether obstacle avoidance is active
+ */
+void UBoidSystem::SetObstacleAvoidanceParameters(const float InObstacleAvoidanceWeight, const float InObstacleDetectionDistance,
+    const int32 InNumberOfRaycasts, const bool bInEnableObstacleAvoidance)
+{
+    ObstacleAvoidanceWeight = InObstacleAvoidanceWeight;
+    ObstacleDetectionDistance = InObstacleDetectionDistance;
+
+    if (NumberOfRaycasts != InNumberOfRaycasts)
+    {
+        NumberOfRaycasts = InNumberOfRaycasts;
+        GenerateRaycastRotators();
+    }
+    
+    bEnableObstacleAvoidance = bInEnableObstacleAvoidance;
+}
+
+/**
+ * @brief Generates the set of rotators used for obstacle detection raycasts
+ * @details Creates either a uniform distribution using golden ratio or a predefined pattern
+ *          based on the bUseUniformDistribution setting
+ */
+void UBoidSystem::GenerateRaycastRotators()
+{
+    RaycastRotators.Empty();
+
+    if (!bUseUniformDistribution)
+    {
+        RaycastRotators.Add(FRotator::ZeroRotator);
+
+        constexpr float YawAngle = 30.0f;    // Horizontal angle
+        constexpr float PitchAngle = 30.0f;  // Vertical angle
+    
+        RaycastRotators.Add(FRotator(0, YawAngle, 0));       // Right
+        RaycastRotators.Add(FRotator(0, -YawAngle, 0));      // Left
+        RaycastRotators.Add(FRotator(PitchAngle, 0, 0));     // Top
+        RaycastRotators.Add(FRotator(-PitchAngle, 0, 0));    // Bottom
+    
+        if (NumberOfRaycasts > 5)
+        {
+            RaycastRotators.Add(FRotator(PitchAngle, YawAngle, 0));     // Top right
+            RaycastRotators.Add(FRotator(PitchAngle, -YawAngle, 0));    // Top left
+            RaycastRotators.Add(FRotator(-PitchAngle, YawAngle, 0));    // Bottom right
+            RaycastRotators.Add(FRotator(-PitchAngle, -YawAngle, 0));   // Bottom left
+        }
+    
+        if (NumberOfRaycasts > 9)
+        {
+            constexpr float HalfYaw = YawAngle * 0.5f;
+            constexpr float HalfPitch = PitchAngle * 0.5f;
+        
+            RaycastRotators.Add(FRotator(0, HalfYaw, 0));         // Half right
+            RaycastRotators.Add(FRotator(0, -HalfYaw, 0));        // Half left
+            RaycastRotators.Add(FRotator(HalfPitch, 0, 0));       // Half top
+            RaycastRotators.Add(FRotator(-HalfPitch, 0, 0));      // Half bottom
+        }
+    }
+    else
+    {
+        // Fibonacci sphere algorithm for uniform point distribution on a sphere
+        // Uses the golden ratio (φ ≈ 1.618) to create optimal spacing between points
+        const float GoldenRatio = (1.0f + FMath::Sqrt(5.0f)) / 2.0f;
+        
+        for (int32 i = 0; i < NumberOfRaycasts; ++i)
+        {
+            // Vertical placement - evenly distributes points from top to bottom
+            // Maps i/N to an angle in [0,π] with improved uniformity
+            const float t = static_cast<float>(i) / NumberOfRaycasts;
+            const float Theta = FMath::Acos(1.0f - 2.0f * t);
+            
+            // Horizontal placement - uses golden ratio to spiral around the sphere
+            // This ensures points never align, maximizing coverage
+            const float Phi = 2.0f * PI * GoldenRatio * i;
+
+            const float X = FMath::Sin(Theta) * FMath::Cos(Phi);
+            const float Y = FMath::Sin(Theta) * FMath::Sin(Phi);
+            const float Z = FMath::Cos(Theta);
+
+            // Convert from spherical to Cartesian coordinates
+            FVector Direction(X, Y, Z);
+            FRotator Rotator = Direction.Rotation();
+            
+            RaycastRotators.Add(Rotator);
+        }
+    }
+    
+    while (RaycastRotators.Num() > NumberOfRaycasts)
+    {
+        RaycastRotators.RemoveAt(RaycastRotators.Num() - 1);
+    }
+}
+
+/**
+ * @brief Sets whether to use uniform distribution for raycasts
+ * @details When changed, automatically regenerates raycast rotators with the new distribution
+ * 
+ * @param bInUseUniformDistribution Whether to use uniform distribution (true) or predefined pattern (false)
+ */
+void UBoidSystem::SetUseUniformDistribution(const bool bInUseUniformDistribution)
+{
+    if (bUseUniformDistribution != bInUseUniformDistribution)
+    {
+        bUseUniformDistribution = bInUseUniformDistribution;
+        GenerateRaycastRotators();
+    }
+}
+
+/**
+ * @brief Calculates separation, alignment and cohesion forces for all boids
+ * @details Multithreaded calculation of the three core flocking forces for each boid
+ *          based on its neighbors
+ * 
+ * @param OutSeparationForces Array to store calculated separation forces
+ * @param OutAlignmentForces Array to store calculated alignment forces
+ * @param OutCohesionForces Array to store calculated cohesion forces
+ */
 void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, TArray<FVector>& OutAlignmentForces, TArray<FVector>& OutCohesionForces) const
 {
     // Fast memory zeroing
@@ -237,7 +331,7 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
     
     const int32 NumBoids = Positions.Num();
     
-    ParallelFor(NumBoids, [&](int32 i)
+    ParallelFor(NumBoids, [&](const int32 i)
     {
         if (NeighborCache.Neighbors[i].Num() == 0)
         {
@@ -248,10 +342,15 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
         FVector SeparationForce = FVector::ZeroVector;
         FVector AverageDirection = FVector::ZeroVector;
         FVector CenterOfMass = FVector::ZeroVector;
-        
+
+        // Calculation of the three core flocking forces:
+        // Separation - steer away from nearby neighbors
+        // Alignment - steer towards average heading of neighbors
+        // Cohesion - steer towards center of local flock
         for (const int32 NeighborIdx : NeighborCache.Neighbors[i])
         {
-            // Separation
+            // Separation: Push away from neighbors that are too close
+            // Force increases as distance decreases
             const float Distance = FVector::Dist(Positions[i], Positions[NeighborIdx]);
             if (Distance < SeparationRadius && Distance > 0)
             {
@@ -262,17 +361,19 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
                 SeparationCount++;
             }
             
-            // Alignment
+            // Alignment: Steer in same direction as neighbors
+            // Simply accumulate all neighbor directions for later averaging
             AverageDirection += Directions[NeighborIdx];
             
-            // Cohesion
+            // Cohesion: Steer toward center of local flock
+            // Accumulate positions for calculating center of mass
             CenterOfMass += Positions[NeighborIdx];
         }
         
         // Force normalization
         if (SeparationCount > 0)
         {
-            SeparationForce /= (float)SeparationCount;
+            SeparationForce /= static_cast<float>(SeparationCount);
             if (!SeparationForce.IsNearlyZero())
             {
                 SeparationForce.Normalize();
@@ -284,6 +385,7 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
         if (NeighborCount > 0)
         {
             // Alignment
+            // Finalize alignment: Normalize the sum of directions to get average heading
             if (!AverageDirection.IsNearlyZero())
             {
                 AverageDirection.Normalize();
@@ -291,6 +393,7 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
             OutAlignmentForces[i] = AverageDirection;
             
             // Cohesion
+            // Finalize cohesion: Calculate center of mass, then direction toward it
             CenterOfMass /= NeighborCount;
             FVector DirectionToCenter = CenterOfMass - Positions[i];
             if (!DirectionToCenter.IsNearlyZero())
@@ -302,6 +405,13 @@ void UBoidSystem::CalculateFlockingForces(TArray<FVector>& OutSeparationForces, 
     });
 }
 
+/**
+ * @brief Calculates forces that keep boids within the boundary box
+ * @details Applies progressively stronger forces as boids approach boundaries,
+ *          with emergency stronger forces very close to edges
+ * 
+ * @param OutForces Array to store calculated boundary forces
+ */
 void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
 {
     // Fast memory zeroing
@@ -314,7 +424,10 @@ void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
 
     const FVector BoxOrigin = OwnerManager->SpawnVolume->GetComponentLocation();
     const FVector BoxExtent = OwnerManager->SpawnVolume->GetScaledBoxExtent();
-    
+
+    // Lambda function that calculates boundary repulsion force for a single axis
+    // Creates a smooth force field that increases as boids approach boundaries
+    // Includes an "emergency zone" with exponentially stronger forces when very close to edges
     auto CalculateAxisForce = [](const float LocalPosition, const float AxisExtent, const float Margin, const float Strength, const float Exponent, const float EmerDist, const float EmerFactor) -> float
     {
         const float DistanceToPositiveWall = AxisExtent - LocalPosition;
@@ -343,14 +456,16 @@ void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
             
             if (-DistanceToNegativeWall < EmerDist)
             {
-                float EmergencyRatio = 1.0f - (-DistanceToNegativeWall / EmerDist);
+                const float EmergencyRatio = 1.0f - (-DistanceToNegativeWall / EmerDist);
                 Force *= (1.0f + EmerFactor * EmergencyRatio);
             }
         }
         
         return Force;
     };
-    
+
+    // Calculate boundary forces with dynamic adjustment based on speed
+    // Faster boids receive stronger forces and earlier warnings to prevent breaches
     for (int32 i = 0; i < Positions.Num(); ++i)
     {
         constexpr float ForceExponent = 0.9f;
@@ -377,6 +492,13 @@ void UBoidSystem::CalculateBoundaryForces(TArray<FVector>& OutForces) const
     }
 }
 
+/**
+ * @brief Calculates forces to steer boids away from obstacles
+ * @details Uses raycasts to detect obstacles and generates avoidance forces
+ *          based on distance and approach angle
+ * 
+ * @param OutForces Array to store calculated obstacle avoidance forces
+ */
 void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) const
 {
     // Fast memory zeroing
@@ -398,7 +520,10 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
     constexpr float ForceExponent = 0.9f;
     constexpr float EmergencyDistance = 100.0f;
     constexpr float EmergencyFactor = 5.0f;
-    
+
+    // Multi-threaded obstacle avoidance calculation
+    // Casts rays in multiple directions and generates steering forces away from detected obstacles
+    // Force strength is dynamically adjusted based on boid speed and distance to obstacle
     ParallelFor(Positions.Num(), [&](const int32 i)
     {
         const float CurrentSpeed = Directions[i].Size();
@@ -410,7 +535,9 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
         const FVector BoidPosition = Positions[i];
         const FVector BoidDirection = Directions[i];
         int32 HitCount = 0;
-        
+
+        // Cast rays in different directions around boid's forward vector
+        // Each ray checks for obstacles within detection distance
         for (const FRotator& Rotator : RaycastRotators)
         {
             FVector WorldDir = Rotator.RotateVector(BoidDirection);
@@ -424,7 +551,9 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
                 ECC_WorldStatic,
                 GlobalObstacleQueryParams
             );
-            
+
+            // When obstacle detected, calculate repulsion force based on distance
+            // Closer obstacles generate exponentially stronger forces
             if (bHit)
             {
                 const float Distance = HitResult.Distance;
@@ -461,6 +590,12 @@ void UBoidSystem::CalculateObstacleAvoidanceForces(TArray<FVector>& OutForces) c
     });
 }
 
+/**
+ * @brief Updates the positions of all boids based on their current direction and velocity
+ * @details Multithreaded update of positions with boundary constraints
+ * 
+ * @param DeltaTime Time elapsed since the last frame in seconds
+ */
 void UBoidSystem::UpdatePositions(const float DeltaTime)
 {
     ParallelFor(Positions.Num(), [&](const int32 i)
@@ -475,87 +610,84 @@ void UBoidSystem::UpdatePositions(const float DeltaTime)
     });
 }
 
-void UBoidSystem::GenerateRaycastRotators()
+// /**
+//  * @brief Checks if two boids are within a specified radius of each other
+//  * @details Quick distance check using squared distance for efficiency
+//  * 
+//  * @param BoidA Index of the first boid
+//  * @param BoidB Index of the second boid
+//  * @param Radius Maximum distance for boids to be considered neighbors
+//  * @return bool True if boids are neighbors, false otherwise
+//  */
+// bool UBoidSystem::AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const
+// {
+//     if (BoidA == BoidB)
+//     {
+//         return false;
+//     }
+//     
+//     const float DistSquared = FVector::DistSquared(Positions[BoidA], Positions[BoidB]);
+//     return DistSquared <= Radius * Radius;
+// }
+
+/**
+ * @brief Finds all neighbors for each boid
+ * @details Multithreaded calculation that determines which boids are visible
+ *          to each other based on distance and field of view
+ */
+void UBoidSystem::FindAllNeighbors()
 {
-    RaycastRotators.Empty();
+    NeighborCache.Clear();
+    
+    const float PerceptionRadiusSq = PerceptionRadius * PerceptionRadius;
+    const int32 NumBoids = Positions.Num();
 
-    if (!bUseUniformDistribution)
+    // Temporary storage to allow parallel computation without race conditions
+    TArray<TArray<int32>> TempNeighbors;
+    TempNeighbors.SetNum(NumBoids);
+
+    // Multi-threaded neighbor detection for performance optimization
+    ParallelFor(NumBoids, [&](const int32 i)
     {
-        RaycastRotators.Add(FRotator::ZeroRotator);
-
-        constexpr float YawAngle = 30.0f;    // Angle horizontal
-        constexpr float PitchAngle = 30.0f;  // Angle vertical
-    
-        RaycastRotators.Add(FRotator(0, YawAngle, 0));       // Droite
-        RaycastRotators.Add(FRotator(0, -YawAngle, 0));      // Gauche
-        RaycastRotators.Add(FRotator(PitchAngle, 0, 0));     // Haut
-        RaycastRotators.Add(FRotator(-PitchAngle, 0, 0));    // Bas
-    
-        if (NumberOfRaycasts > 5)
-        {
-            RaycastRotators.Add(FRotator(PitchAngle, YawAngle, 0));     // Haut-Droite
-            RaycastRotators.Add(FRotator(PitchAngle, -YawAngle, 0));    // Haut-Gauche
-            RaycastRotators.Add(FRotator(-PitchAngle, YawAngle, 0));    // Bas-Droite
-            RaycastRotators.Add(FRotator(-PitchAngle, -YawAngle, 0));   // Bas-Gauche
-        }
-    
-        if (NumberOfRaycasts > 9)
-        {
-            constexpr float HalfYaw = YawAngle * 0.5f;
-            constexpr float HalfPitch = PitchAngle * 0.5f;
+        TArray<int32>& MyNeighbors = TempNeighbors[i];
+        const FVector& MyPosition = Positions[i];
+        const FVector& MyDirection = Directions[i];
         
-            RaycastRotators.Add(FRotator(0, HalfYaw, 0));              // Demi-droite
-            RaycastRotators.Add(FRotator(0, -HalfYaw, 0));             // Demi-gauche
-            RaycastRotators.Add(FRotator(HalfPitch, 0, 0));            // Demi-haut
-            RaycastRotators.Add(FRotator(-HalfPitch, 0, 0));           // Demi-bas
-        }
-    }
-    else
-    {
-        const float GoldenRatio = (1.0f + FMath::Sqrt(5.0f)) / 2.0f;
-        
-        for (int32 i = 0; i < NumberOfRaycasts; ++i)
+        for (int32 j = 0; j < NumBoids; ++j)
         {
-            // Vertical placement
-            const float t = (float)i / NumberOfRaycasts;
-            const float Theta = FMath::Acos(1.0f - 2.0f * t);
+            if (i == j)
+            {
+                continue;
+            }
             
-            // horizontal placement
-            const float Phi = 2.0f * PI * GoldenRatio * i;
-
-            const float X = FMath::Sin(Theta) * FMath::Cos(Phi);
-            const float Y = FMath::Sin(Theta) * FMath::Sin(Phi);
-            const float Z = FMath::Cos(Theta);
+            const float DistSquared = FVector::DistSquared(MyPosition, Positions[j]);
             
-            FVector Direction(X, Y, Z);
-            FRotator Rotator = Direction.Rotation();
-            
-            RaycastRotators.Add(Rotator);
+            if (DistSquared <= PerceptionRadiusSq)
+            {
+                // Field of view check using dot product
+                // Only boids within the vision cone are considered neighbor
+                const FVector DirectionToOther = (Positions[j] - MyPosition).GetSafeNormal();
+                const float DotProduct = FVector::DotProduct(MyDirection, DirectionToOther);
+                
+                if (DotProduct >= FOVDotProductThreshold)
+                {
+                    MyNeighbors.Add(j);
+                }
+            }
         }
+    });
+
+    // Transfer results from temporary arrays to persistent cache
+    for (int32 i = 0; i < NumBoids; ++i)
+    {
+        NeighborCache.Neighbors[i] = MoveTemp(TempNeighbors[i]);
     }
     
-    while (RaycastRotators.Num() > NumberOfRaycasts)
+    int32 MaxNeighborsThisFrame = 0;
+    for (int32 i = 0; i < NumBoids; ++i)
     {
-        RaycastRotators.RemoveAt(RaycastRotators.Num() - 1);
-    }
-}
-
-void UBoidSystem::SetUseUniformDistribution(bool bInUseUniformDistribution)
-{
-    if (bUseUniformDistribution != bInUseUniformDistribution)
-    {
-        bUseUniformDistribution = bInUseUniformDistribution;
-        GenerateRaycastRotators();
-    }
-}
-
-bool UBoidSystem::AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const
-{
-    if (BoidA == BoidB)
-    {
-        return false;
+        MaxNeighborsThisFrame = FMath::Max(MaxNeighborsThisFrame, NeighborCache.Neighbors[i].Num());
     }
     
-    const float DistSquared = FVector::DistSquared(Positions[BoidA], Positions[BoidB]);
-    return DistSquared <= Radius * Radius;
+    LastFrameMaxNeighbors = FMath::Max(1, MaxNeighborsThisFrame + (MaxNeighborsThisFrame / 4));
 }
