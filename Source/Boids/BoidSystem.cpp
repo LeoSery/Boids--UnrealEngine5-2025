@@ -610,26 +610,6 @@ void UBoidSystem::UpdatePositions(const float DeltaTime)
     });
 }
 
-// /**
-//  * @brief Checks if two boids are within a specified radius of each other
-//  * @details Quick distance check using squared distance for efficiency
-//  * 
-//  * @param BoidA Index of the first boid
-//  * @param BoidB Index of the second boid
-//  * @param Radius Maximum distance for boids to be considered neighbors
-//  * @return bool True if boids are neighbors, false otherwise
-//  */
-// bool UBoidSystem::AreNeighbors(const int32 BoidA, const int32 BoidB, const float Radius) const
-// {
-//     if (BoidA == BoidB)
-//     {
-//         return false;
-//     }
-//     
-//     const float DistSquared = FVector::DistSquared(Positions[BoidA], Positions[BoidB]);
-//     return DistSquared <= Radius * Radius;
-// }
-
 /**
  * @brief Finds all neighbors for each boid
  * @details Multithreaded calculation that determines which boids are visible
